@@ -1,0 +1,32 @@
+
+Attaching package: ‘dplyr’
+
+The following objects are masked from ‘package:stats’:
+
+    filter, lag
+
+The following objects are masked from ‘package:base’:
+
+    intersect, setdiff, setequal, union
+
+Computing index: zero_xi_expected_dgamma_newton
+Fitted object contains an offset but the offset is `NULL` in `predict.sdmTMB()`
+and `newdata` were supplied.
+Prediction will proceed assuming the offset vector is 0 in the prediction.
+Specify an offset vector in `predict.sdmTMB()` to override this.
+Computing index: constant_xi_newton
+Fitted object contains an offset but the offset is `NULL` in `predict.sdmTMB()`
+and `newdata` were supplied.
+Prediction will proceed assuming the offset vector is 0 in the prediction.
+Specify an offset vector in `predict.sdmTMB()` to override this.
+Computing index: constant_xi_expected_dgamma_newton
+Fitted object contains an offset but the offset is `NULL` in `predict.sdmTMB()`
+and `newdata` were supplied.
+Prediction will proceed assuming the offset vector is 0 in the prediction.
+Specify an offset vector in `predict.sdmTMB()` to override this.
+Computing index: zero_xi_expected_dlnorm_newton
+Fitted object contains an offset but the offset is `NULL` in `predict.sdmTMB()`
+and `newdata` were supplied.
+Prediction will proceed assuming the offset vector is 0 in the prediction.
+Specify an offset vector in `predict.sdmTMB()` to override this.
+Computing index: constant_xi_expected_dlnorm_newton

@@ -1,0 +1,14 @@
+attempting to improve convergence with Newton update(s)
+accepting parameters from Newton update
+zero_xi_expected_dlnorm : extra optimization took 24.4 min
+max|grad| 0.00389 -> 8.25e-07; n > 0.001: 2 -> 0; objective 452167.9510 -> 452167.9510
+✔ Non-linear minimizer suggests successful convergence
+✔ Hessian matrix is positive definite
+✔ No extreme or very small eigenvalues detected
+✔ No gradients with respect to fixed effects are >= 0.001
+✔ No fixed-effect standard errors are NA
+✔ No standard errors look unreasonably large
+✔ No sigma parameters are < 0.01
+✔ No sigma parameters are > 100
+✔ Range parameters don't look unreasonably large
+all_ok: TRUE 
