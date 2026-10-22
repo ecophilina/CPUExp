@@ -1,7 +1,0 @@
-[10:07] Newton: delta-Gamma
-[10:17] zero_xi_expected_dgamma exit 0: zero_xi_expected_dgamma : extra optimization took 10.5 min all_ok: TRUE  
-[10:46] constant_xi_expected_dgamma exit 0: constant_xi_expected_dgamma : extra optimization took 39 min all_ok: TRUE  
-[10:46] Newton: delta-lognormal
-[11:11] zero_xi_expected_dlnorm exit 0: zero_xi_expected_dlnorm : extra optimization took 24.4 min all_ok: TRUE  
-[11:39] constant_xi_expected_dlnorm exit 0: constant_xi_expected_dlnorm : extra optimization took 53.3 min all_ok: TRUE  
-[11:39] indices

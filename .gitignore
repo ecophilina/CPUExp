@@ -52,3 +52,6 @@ rsconnect/
 # Model fits, data extracts, and figures
 *.rds
 *.png
+
+# Run logs
+output/logs/
