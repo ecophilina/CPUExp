@@ -67,13 +67,50 @@ catch_formula <- catch_kg ~ 0 + factor(year) + s(log_depth, k = 5) +
   month + (1 | vessel)
 
 
+# multiphase = FALSE skips the first optimization phase (fields off). Note: it
+# does not lower peak memory. Joint models with time-varying b (iid/rw) need
+# ~16-18 GB to build the full model either way (vs ~9 GB for constant b).
 fit_cpue <- function(preferential = NULL, fit_mesh = mesh,
-                     family = delta_gamma()) {
+                     family = delta_gamma(), multiphase = TRUE) {
   sdmTMB(
     catch_formula,
     data = d,
     mesh = fit_mesh,
     time = "year",
+    family = family,
+    offset = d$log_hours,
+    spatial = "on",
+    spatiotemporal = "iid",
+    preferential = preferential,
+    # Optional PC priors to stabilize range/SD estimates:
+    # priors = sdmTMBpriors(matern_s = pc_matern(range_gt = 10, sigma_lt = 3),
+    #                       matern_st = pc_matern(range_gt = 10, sigma_lt = 3)),
+    control = sdmTMBcontrol(backend = "rtmb", multiphase = multiphase),
+    silent = FALSE
+  )
+}
+
+
+# Time-varying (random-walk) intercept in place of factor(year). Uses "rw0"
+# with an intercept in the formula: with "rw" the first value is free, and
+# `0 + ... + month` gives month all 12 levels (an implicit intercept), which
+# made the model unidentifiable (non-positive-definite Hessians).
+catch_formula_tv <- catch_kg ~ 1 + s(log_depth, k = 5) +
+  month + (1 | vessel)
+
+# The gamma prior on the random-walk SD (shape 1 / cv^2 = 4) has zero density
+# at sigma_V = 0, so it keeps the time-varying SD from collapsing.
+fit_cpue_tv <- function(preferential = NULL, fit_mesh = mesh,
+                     family = delta_gamma(),
+                     priors = sdmTMBpriors(sigma_V = gamma_cv(0.1, 0.5))) {
+  sdmTMB(
+    catch_formula_tv,
+    data = d,
+    mesh = fit_mesh,
+    time = "year",
+    time_varying = ~1,
+    time_varying_type = "rw0",
+    priors = priors,
     family = family,
     offset = d$log_hours,
     spatial = "on",
@@ -201,7 +238,25 @@ model_specs <- list(
   constant_xi_expected_dlnorm = pref("constant", spatial = "on"),
   zero_xi_expected_dlnorm = pref("zero", spatial = "on"),
   constant_rwbase_xi_expected_dlnorm = pref("constant", spatial = "on",
-    baseline = "rw", formula = samp_formula2)
+    baseline = "rw", formula = samp_formula2),
+  # time-varying preference (random walk in b_t), rw baseline. With the
+  # expected target, three attempts were killed out of memory (peak ~16 GB
+  # resident, vs ~9 GB for constant b) when the full model was built after the
+  # first optimization phase; the fields-target version is used instead.
+  rw_rwbase_xi_expected_dlnorm = pref("rw", spatial = "on",
+    baseline = "rw", formula = samp_formula2),
+  rw_rwbase_xi_fields_dlnorm = pref("rw", spatial = "on", target = "fields",
+    baseline = "rw", formula = samp_formula2),
+  # time-varying preference (IID b_t deviations), rw baseline
+  iid_rwbase_xi_expected_dlnorm = pref("iid", spatial = "on",
+    baseline = "rw", formula = samp_formula2),
+  # constant preference, generalized gamma
+  constant_xi_expected_dgengamma = pref("constant", spatial = "on"),
+  # same with the time-varying (rw0) catch intercept, and its b = 0 null.
+  # Needs an sdmTMB dev-preferential build newer than 1.2.0.9001, which errors
+  # "Unsupported: `time_varying`".
+  constant_xi_expected_tv_dgengamma = pref("constant", spatial = "on"),
+  zero_xi_expected_tv_dgengamma = pref("zero", spatial = "on")
   # # constant preference, fields target
   # constant_xi = pref("constant", spatial = "on", target = "fields"),
   # # constant preference, rw baseline, delta-Gamma
@@ -209,13 +264,23 @@ model_specs <- list(
   #   formula = samp_formula2)
   )
 
+# Models whose catch model is fit_cpue_tv() (time-varying intercept) rather
+# than fit_cpue() (factor(year) effects)
+model_tv <- c("constant_xi_expected_tv_dgengamma", "zero_xi_expected_tv_dgengamma")
+
 # Observation family per model (delta_gamma() if not listed)
 model_families <- list(
   constant_xi_expected_dgamma = delta_gamma(),
   zero_xi_expected_dgamma = delta_gamma(),
   constant_xi_expected_dlnorm = delta_lognormal(),
   zero_xi_expected_dlnorm = delta_lognormal(),
-  constant_rwbase_xi_expected_dlnorm = delta_lognormal()
+  constant_rwbase_xi_expected_dlnorm = delta_lognormal(),
+  rw_rwbase_xi_expected_dlnorm = delta_lognormal(),
+  rw_rwbase_xi_fields_dlnorm = delta_lognormal(),
+  iid_rwbase_xi_expected_dlnorm = delta_lognormal(),
+  constant_xi_expected_dgengamma = delta_gengamma(),
+  constant_xi_expected_tv_dgengamma = delta_gengamma(),
+  zero_xi_expected_tv_dgengamma = delta_gengamma()
 )
 
 
@@ -234,7 +299,8 @@ fits <- lapply(names(model_specs), function(nm) {
   message("Fitting: ", nm)
   family <- model_families[[nm]]
   if (is.null(family)) family <- delta_gamma()
-  fit <- tryCatch(fit_cpue(model_specs[[nm]], family = family), error = function(e) {
+  fit_fun <- if (nm %in% model_tv) fit_cpue_tv else fit_cpue
+  fit <- tryCatch(fit_fun(model_specs[[nm]], family = family), error = function(e) {
     message("  failed: ", conditionMessage(e))
     NULL
   })

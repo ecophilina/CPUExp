@@ -4,8 +4,8 @@
 # joint preferential-sampling model also supports, so the winner can be carried
 # into the joint fits. Candidates are limited to families that can handle
 # catch_kg (continuous, with zeros):
-#   - delta_gamma(), delta_lognormal()                  (standard delta)
-#   - delta_gamma/lognormal(type = "poisson-link")      (Poisson-link delta)
+#   - delta_gamma(), delta_lognormal(), delta_gengamma() (standard delta)
+#   - delta_gamma/lognormal(type = "poisson-link")       (Poisson-link delta)
 #   - tweedie()
 # Excluded: poisson()/nbinom2() (counts; kg isn't integer) and Gamma()/
 # lognormal() (no zeros).
@@ -16,6 +16,20 @@
 #
 # Runtime: roughly 15 min per fit at a 15 km mesh, plus simulation and
 # bias-corrected indices.
+#
+# Usage (from the project root):
+#   Rscript R/family-comparison.R [variant] [family]
+# variant: "year" (default; fit_cpue(), factor(year) effects) or "tv"
+#   (fit_cpue_tv(), random-walk time-varying intercept). Files for "tv" are
+#   tagged "_tv" (e.g. output/fit-naive_tv-delta_gamma-cutoff15.rds).
+# family: fit only this family and stop (to run families as parallel
+#   processes); then rerun without it to compare the cached fits.
+
+args <- commandArgs(trailingOnly = TRUE)
+variant <- if (length(args) >= 1) args[1] else "year"
+fit_only <- if (length(args) >= 2) args[2] else NA
+stopifnot(variant %in% c("year", "tv"))
+tag <- if (variant == "year") "" else paste0("_", variant)
 
 # Setup from the main script ---------------------------------------------------
 
@@ -31,6 +45,7 @@ stopifnot(length(stop_at) == 1)
 for (i in seq_len(stop_at - 1)) eval(ex[[i]], globalenv())
 
 mesh <- build_mesh(mesh_cutoff)
+fit_fun <- switch(variant, year = fit_cpue, tv = fit_cpue_tv)
 n_sim <- 100 # simulated datasets per family for residual checks
 # FALSE: compare only families with cached fits (e.g., while others are still
 # fitting elsewhere); rerun later to add them. Per-family checks are cached, so
@@ -40,6 +55,7 @@ fit_missing <- FALSE
 families <- list(
   delta_gamma = delta_gamma(),
   delta_lognormal = delta_lognormal(),
+  delta_gengamma = delta_gengamma(),
   delta_gamma_plink = delta_gamma(type = "poisson-link"),
   delta_lognormal_plink = delta_lognormal(type = "poisson-link"),
   tweedie = tweedie()
@@ -47,12 +63,18 @@ families <- list(
 
 # Fits -------------------------------------------------------------------------
 
+if (!is.na(fit_only)) {
+  stopifnot(fit_only %in% names(families))
+  families <- families[fit_only]
+  fit_missing <- TRUE
+}
+
 fam_fits <- list()
 fam_secs <- c()
 for (nm in names(families)) {
   # Every family is fitted and cached under its own name (delta_gamma
   # included), so all fits are guaranteed to use the same data for AIC.
-  f <- fit_file(paste0("naive-", nm), mesh_cutoff)
+  f <- fit_file(paste0("naive", tag, "-", nm), mesh_cutoff)
   if (file.exists(f) && !refit) {
     fam_fits[[nm]] <- readRDS(f)
     fam_secs[[nm]] <- NA_real_
@@ -64,7 +86,7 @@ for (nm in names(families)) {
   }
   message("Fitting naive model with ", nm)
   secs <- system.time(
-    fit <- tryCatch(fit_cpue(family = families[[nm]]), error = function(e) {
+    fit <- tryCatch(fit_fun(family = families[[nm]]), error = function(e) {
       message("  failed: ", conditionMessage(e))
       NULL
     })
@@ -74,6 +96,14 @@ for (nm in names(families)) {
     fam_fits[[nm]] <- fit
     fam_secs[[nm]] <- secs
   }
+}
+
+if (!is.na(fit_only)) {
+  fit <- fam_fits[[fit_only]]
+  if (is.null(fit)) quit(status = 1)
+  cat("FIT DONE:", variant, fit_only, "in", round(fam_secs[[fit_only]] / 60, 1),
+    "min | all_ok:", isTRUE(sanity(fit, silent = TRUE)$all_ok), "\n")
+  quit(status = 0)
 }
 
 # Convergence and AIC ----------------------------------------------------------
@@ -96,6 +126,12 @@ print(fam_summary)
 
 # Only compare families whose fits pass sanity()
 ok <- fam_summary$family[fam_summary$converged]
+if (length(ok) == 0) {
+  write.csv(fam_summary, paste0("output/family-comparison", tag, ".csv"),
+    row.names = FALSE)
+  message("No fits pass sanity(); wrote the convergence/AIC table only.")
+  quit(status = 0)
+}
 
 # Simulation-based checks ------------------------------------------------------
 
@@ -112,7 +148,7 @@ dir.create(checks_dir, showWarnings = FALSE)
 # Simulation checks, QQ plot, and index for one family; cached per family
 family_checks <- function(nm) {
   f <- file.path(checks_dir,
-    paste0("family-checks-", nm, "-cutoff", mesh_cutoff, ".rds"))
+    paste0("family-checks", tag, "-", nm, "-cutoff", mesh_cutoff, ".rds"))
   if (file.exists(f) && !refit) return(readRDS(f))
   message("Checking ", nm)
   fit <- fam_fits[[nm]]
@@ -120,7 +156,7 @@ family_checks <- function(nm) {
 
   q_pos <- function(x, p) quantile(x[x > 0], p, names = FALSE)
   res <- dharma_residuals(s, fit, plot = FALSE, return_DHARMa = TRUE)
-  png(file.path("figs", paste0("family-qq-", nm, ".png")),
+  png(file.path("figs", paste0("family-qq", tag, "-", nm, ".png")),
     width = 5, height = 5, units = "in", res = 150)
   DHARMa::plotQQunif(res, testUniformity = FALSE, testOutliers = FALSE,
     testDispersion = FALSE, main = nm)
@@ -168,7 +204,7 @@ ggplot(fam_index, aes(year, rel_est, colour = family, fill = family)) +
   geom_line() +
   labs(x = "Year", y = "Relative index (geometric mean = 1)") +
   theme_light()
-ggsave("figs/family-index.png", width = 8, height = 5)
+ggsave(paste0("figs/family-index", tag, ".png"), width = 8, height = 5)
 
 fam_trend <- fam_index |>
   group_by(family) |>
@@ -187,4 +223,5 @@ fam_results <- fam_summary |>
   left_join(fam_trend, by = "family") |>
   arrange(dAIC)
 print(fam_results)
-write.csv(fam_results, "output/family-comparison.csv", row.names = FALSE)
+write.csv(fam_results, paste0("output/family-comparison", tag, ".csv"),
+  row.names = FALSE)

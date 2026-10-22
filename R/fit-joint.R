@@ -8,8 +8,12 @@
 # R/cpue-index.R then loads the cached fits. Uses the same data, mesh,
 # fit_cpue(), and cache file (fit_file()) as the main script.
 
-nm <- commandArgs(trailingOnly = TRUE)[1]
-if (is.na(nm)) stop("Usage: Rscript R/fit-joint.R <model name>")
+args <- commandArgs(trailingOnly = TRUE)
+nm <- args[1]
+if (is.na(nm)) stop("Usage: Rscript R/fit-joint.R <model name> [--single-phase]")
+# --single-phase: fit_cpue(multiphase = FALSE). Does not lower peak memory for
+# time-varying-b models (~17.8 GB single-phase vs ~16 GB multiphase).
+multiphase <- !"--single-phase" %in% args
 
 # Evaluate R/cpue-index.R up to and including `model_families`, skipping the
 # mesh sensitivity block: loads the clean data, builds the main mesh, and
@@ -41,10 +45,17 @@ if (is.null(family)) family <- delta_gamma()
 spec <- model_specs[[nm]]
 cat("Fitting", nm, "| family", paste(family$family, collapse = "/"),
   "| target", spec$target, "| coefficient", spec$coefficient,
-  "| baseline", spec$baseline, "| spatial", spec$spatial, "\n  ->", f, "\n")
+  "| baseline", spec$baseline, "| spatial", spec$spatial,
+  "| multiphase", multiphase, "\n  ->", f, "\n")
 
 t0 <- Sys.time()
-fit <- fit_cpue(spec, family = family)
+# Time-varying catch models use fit_cpue_tv() (no multiphase argument)
+if (exists("model_tv") && nm %in% model_tv) {
+  cat("  catch model: fit_cpue_tv() (time-varying intercept)\n")
+  fit <- fit_cpue_tv(spec, family = family)
+} else {
+  fit <- fit_cpue(spec, family = family, multiphase = multiphase)
+}
 cat("FIT DONE:", nm, "in",
   round(as.numeric(Sys.time() - t0, units = "mins"), 1), "min\n")
 saveRDS(fit, f)
