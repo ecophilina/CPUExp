@@ -47,7 +47,8 @@ predict_frame <- function(fit_name) {
   f <- file.path(pred_dir, paste0("pred-", fit_name, "-cutoff", mesh_cutoff, ".rds"))
   if (file.exists(f)) return(readRDS(f))
   message("Predicting: ", fit_name)
-  fit <- readRDS(file.path("output",
+  fit_dir <- if (grepl("^naive", fit_name)) "output" else "models"
+  fit <- readRDS(file.path(fit_dir,
     paste0("fit-", fit_name, "-cutoff", mesh_cutoff, ".rds")))
   p <- predict(fit, newdata = newdata, type = "response", re_form_iid = NA)
   # Delta models: combined expected catch (encounter prob x positive mean)

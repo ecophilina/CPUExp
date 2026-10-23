@@ -20,7 +20,7 @@ out_file <- "data/cpue-index-clean.rds"
 species <- "redbanded rockfish"
 final_year <- 2025
 utm_crs <- 32609 # UTM zone 9N
-cell_km <- 4 # sampling-frame cell size; b and gamma depend on this choice
+cell_km <- 6 # sampling-frame cell size; b and gamma depend on this choice
 min_yrs_cell <- 3 # eligible cell = fished by the fleet in >= this many years
 min_positive_trips <- 5 # fleet definition (as in gfplot::tidy_cpue_index())
 min_yrs_with_trips <- 5
@@ -278,6 +278,43 @@ frame <- cells |>
   rename(X = cell_X, Y = cell_Y) |>
   as.data.frame()
 
+# Data-driven proxy for the 2012 trawl footprint freeze: footprint = 1 for
+# cells fished from footprint_year on, 0 for cells only fished before it;
+# pre_footprint = 1 for years before footprint_year. footprint = 0 cells are
+# never sampled from footprint_year on (by construction), so a sampling model
+# using footprint with those cell-years in the frame has complete separation.
+footprint_year <- 2013
+footprint_cells <- frame |>
+  group_by(X, Y) |>
+  summarise(footprint = as.integer(any(sampled == 1 & year >= footprint_year)),
+    .groups = "drop")
+frame <- frame |>
+  left_join(footprint_cells, by = c("X", "Y")) |>
+  mutate(pre_footprint = as.integer(year < footprint_year))
+
+# Frame cells and the footprint proxy: cells fished from footprint_year on vs
+# cells only fished before it
+footprint_cells |>
+  mutate(footprint = factor(footprint, levels = c(1, 0),
+    labels = c(paste0("Fished ", footprint_year, "+"),
+      paste0("Only fished before ", footprint_year)))) |>
+  ggplot(aes(X, Y)) +
+  geom_tile(aes(fill = footprint), width = cell_km, height = cell_km) +
+  geom_point(data = ports, shape = 17, size = 2) +
+  geom_text(aes(label = port), data = ports, hjust = -0.15, size = 3) +
+  scale_fill_manual(values = c("#2c7fb8", "#f03b20"), name = NULL) +
+  scale_x_continuous(expand = expansion(mult = c(0.05, 0.15))) + # port labels
+  coord_fixed() +
+  labs(x = "X (km)", y = "Y (km)",
+    title = paste0("Sampling frame (", nrow(footprint_cells), " cells, ",
+      cell_km, " km)"),
+    subtitle = paste0(sum(footprint_cells$footprint), " in footprint, ",
+      sum(footprint_cells$footprint == 0), " only fished before ",
+      footprint_year)) +
+  theme_light() +
+  theme(legend.position = "bottom")
+ggsave(paste0("figs/frame-footprint-map-", cell_km, "km.png"), width = 7, height = 8)
+
 frame |>
   group_by(year) |>
   summarise(prop_sampled = mean(sampled), n_cells = n()) |>
@@ -305,7 +342,8 @@ saveRDS(
       cell_km = cell_km, min_yrs_cell = min_yrs_cell,
       min_positive_trips = min_positive_trips,
       min_yrs_with_trips = min_yrs_with_trips, max_hours = max_hours,
-      depth_quantiles = depth_quantiles, majors = majors, ports = ports
+      depth_quantiles = depth_quantiles, majors = majors, ports = ports,
+      footprint_year = footprint_year
     ),
     created = Sys.time()
   ),

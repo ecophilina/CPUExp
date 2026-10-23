@@ -19,7 +19,8 @@ cell_km <- prepped$settings$cell_km
 index_dir <- file.path("output", "indices")
 dir.create(index_dir, showWarnings = FALSE)
 
-# label = fit name (output/fit-<name>-cutoff<mesh_cutoff>.rds). Joint fits use
+# label = fit name (output/ or models/fit-<name>-cutoff<mesh_cutoff>.rds; see
+# fit_path()). Joint fits use
 # their converged (_newton) versions where a Newton step was needed.
 models <- tribble(
   ~label, ~fit, ~family, ~model_type,
@@ -35,18 +36,25 @@ models <- tribble(
   # The expected-target version ran out of memory (~16 GB+); fields instead
   "rw b_t, rw baseline (fields)", "rw_rwbase_xi_fields_dlnorm", "delta-lognormal", "joint",
   "naive", "naive-delta_gengamma", "delta-gengamma", "naive",
-  "constant (expected)", "constant_xi_expected_dgengamma", "delta-gengamma", "joint"
+  "constant (expected)", "constant_xi_expected_dgengamma", "delta-gengamma", "joint",
+  # Time-varying (rw0) catch intercept instead of factor(year)
+  "naive, tv intercept", "naive_tv-delta_gengamma", "delta-gengamma", "naive",
+  "zero, tv intercept", "zero_xi_expected_tv_dgengamma", "delta-gengamma", "joint, b = 0",
+  "constant (expected), tv intercept", "constant_xi_expected_tv_dgengamma", "delta-gengamma", "joint"
 )
 
 # Naive indices were already computed by R/family-comparison.R
+# (naive-<family> -> family-checks-<family>; naive_tv-<family> -> family-checks_tv-<family>)
 family_check_file <- function(fit_name) {
-  fam <- sub("^naive-", "", fit_name)
+  tag <- sub("^naive(_[a-z0-9]+)?-.*$", "\\1", fit_name)
+  fam <- sub("^naive(_[a-z0-9]+)?-", "", fit_name)
   file.path("output", "family-checks",
-    paste0("family-checks-", fam, "-cutoff", mesh_cutoff, ".rds"))
+    paste0("family-checks", tag, "-", fam, "-cutoff", mesh_cutoff, ".rds"))
 }
 
 fit_path <- function(fit_name) {
-  file.path("output", paste0("fit-", fit_name, "-cutoff", mesh_cutoff, ".rds"))
+  dir <- if (grepl("^naive", fit_name)) "output" else "models"
+  file.path(dir, paste0("fit-", fit_name, "-cutoff", mesh_cutoff, ".rds"))
 }
 
 get_cached_index <- function(fit_name) {
@@ -57,7 +65,7 @@ get_cached_index <- function(fit_name) {
   f <- file.path(index_dir, paste0("index-", fit_name, "-cutoff", mesh_cutoff, ".rds"))
   if (file.exists(f)) return(readRDS(f))
   fc <- family_check_file(fit_name)
-  if (grepl("^naive-", fit_name) && file.exists(fc)) {
+  if (grepl("^naive(_[a-z0-9]+)?-", fit_name) && file.exists(fc)) {
     idx <- readRDS(fc)$index
   } else {
     message("Computing index: ", fit_name)

@@ -71,7 +71,7 @@ catch_formula <- catch_kg ~ 0 + factor(year) + s(log_depth, k = 5) +
 # does not lower peak memory. Joint models with time-varying b (iid/rw) need
 # ~16-18 GB to build the full model either way (vs ~9 GB for constant b).
 fit_cpue <- function(preferential = NULL, fit_mesh = mesh,
-                     family = delta_gamma(), multiphase = TRUE) {
+                     family = delta_gengamma(), multiphase = TRUE) {
   sdmTMB(
     catch_formula,
     data = d,
@@ -101,7 +101,7 @@ catch_formula_tv <- catch_kg ~ 1 + s(log_depth, k = 5) +
 # The gamma prior on the random-walk SD (shape 1 / cv^2 = 4) has zero density
 # at sigma_V = 0, so it keeps the time-varying SD from collapsing.
 fit_cpue_tv <- function(preferential = NULL, fit_mesh = mesh,
-                     family = delta_gamma(),
+                     family = delta_gengamma(),
                      priors = sdmTMBpriors(sigma_V = gamma_cv(0.1, 0.5))) {
   sdmTMB(
     catch_formula_tv,
@@ -124,8 +124,10 @@ fit_cpue_tv <- function(preferential = NULL, fit_mesh = mesh,
   )
 }
 
+# Joint fits (with a preference/sampling frame) go in models/; naive in output/
 fit_file <- function(name, cutoff) {
-  file.path("output", paste0("fit-", name, "-cutoff", cutoff, ".rds"))
+  dir <- if (grepl("^naive", name)) "output" else "models"
+  file.path(dir, paste0("fit-", name, "-cutoff", cutoff, ".rds"))
 }
 
 # Mesh sensitivity -------------------------------------------------------------
@@ -203,13 +205,15 @@ samp_formula <- sampled ~ 0 + factor(year) + log_dist_port + poly(log_depth, 2)
 
 samp_formula2 <- sampled ~ 1 + log_dist_port + poly(log_depth, 2)
 
+samp_formula3 <- sampled ~ 1 + footprint*pre_footprint + log_dist_port + poly(log_depth, 2)
+
 # Sensitivity: allow the regional distribution of effort to shift by year
 # (unmodelled shifts get attributed to b; see docs). Watch for separation
 # errors if a region-year has all or no cells fished.
 samp_formula_region <- update(samp_formula, . ~ . + factor(year):region)
 
 
-pref <- function(coefficient = "constant", spatial = "off",
+pref <- function(coefficient = "constant", spatial = "on",
                  target = "expected", # changed to expected after Oct 20
                  baseline = "off", # off, iid, or rw
                  formula = samp_formula) {
@@ -233,54 +237,60 @@ pref <- function(coefficient = "constant", spatial = "off",
 # parallel with R/run-joint-fits.sh (via R/fit-joint.R); this script then loads
 # the cached fits.
 model_specs <- list(
-  constant_xi_expected_dgamma = pref("constant", spatial = "on"),
-  zero_xi_expected_dgamma = pref("zero", spatial = "on"),
-  constant_xi_expected_dlnorm = pref("constant", spatial = "on"),
-  zero_xi_expected_dlnorm = pref("zero", spatial = "on"),
-  constant_rwbase_xi_expected_dlnorm = pref("constant", spatial = "on",
-    baseline = "rw", formula = samp_formula2),
-  # time-varying preference (random walk in b_t), rw baseline. With the
-  # expected target, three attempts were killed out of memory (peak ~16 GB
-  # resident, vs ~9 GB for constant b) when the full model was built after the
-  # first optimization phase; the fields-target version is used instead.
-  rw_rwbase_xi_expected_dlnorm = pref("rw", spatial = "on",
-    baseline = "rw", formula = samp_formula2),
-  rw_rwbase_xi_fields_dlnorm = pref("rw", spatial = "on", target = "fields",
-    baseline = "rw", formula = samp_formula2),
-  # time-varying preference (IID b_t deviations), rw baseline
-  iid_rwbase_xi_expected_dlnorm = pref("iid", spatial = "on",
-    baseline = "rw", formula = samp_formula2),
+  # constant_xi_expected_dgamma = pref("constant", spatial = "on"),
+  # zero_xi_expected_dgamma = pref("zero", spatial = "on"),
+  # constant_xi_expected_dlnorm = pref("constant", spatial = "on"),
+  # zero_xi_expected_dlnorm = pref("zero", spatial = "on"),
+  # constant_rwbase_xi_expected_dlnorm = pref("constant", spatial = "on",
+  #   baseline = "rw", formula = samp_formula2),
+  # # time-varying preference (random walk in b_t), rw baseline. With the
+  # # expected target, three attempts were killed out of memory (peak ~16 GB
+  # # resident, vs ~9 GB for constant b) when the full model was built after the
+  # # first optimization phase; the fields-target version is used instead.
+  # rw_rwbase_xi_expected_dlnorm = pref("rw", spatial = "on",
+  #   baseline = "rw", formula = samp_formula2),
+  # rw_rwbase_xi_fields_dlnorm = pref("rw", spatial = "on", target = "fields",
+  #   baseline = "rw", formula = samp_formula2),
+  # # time-varying preference (IID b_t deviations), rw baseline
+  # iid_rwbase_xi_expected_dlnorm = pref("iid", spatial = "on",
+  #   baseline = "rw", formula = samp_formula2),
   # constant preference, generalized gamma
-  constant_xi_expected_dgengamma = pref("constant", spatial = "on"),
+  # constant_xi_expected_dgengamma = pref("constant", spatial = "on"),
   # same with the time-varying (rw0) catch intercept, and its b = 0 null.
   # Needs an sdmTMB dev-preferential build newer than 1.2.0.9001, which errors
   # "Unsupported: `time_varying`".
-  constant_xi_expected_tv_dgengamma = pref("constant", spatial = "on"),
-  zero_xi_expected_tv_dgengamma = pref("zero", spatial = "on")
+  # constant_xi_expected_tv_dgengamma = pref("constant", spatial = "on"),
+  zero_xi_expected_tv_dgengamma = pref("zero", spatial = "on"),
   # # constant preference, fields target
   # constant_xi = pref("constant", spatial = "on", target = "fields"),
   # # constant preference, rw baseline, delta-Gamma
-  # constant_rwbase_xi = pref("constant", spatial = "on", baseline = "rw",
-  #   formula = samp_formula2)
+  constant_rwbase_xi_expected_tv_dgengamma = pref("constant", spatial = "on", baseline = "rw",
+    formula = samp_formula2),
+  # b = 0 null for constant_rwbase_xi_expected_tv_dgengamma (same baseline and
+  # sampling formula, so the likelihood-ratio test of b is valid)
+  zero_rwbase_xi_expected_tv_dgengamma = pref("zero", spatial = "on", baseline = "rw",
+    formula = samp_formula2),
+  ifootprint_rwbase_xi_expected_tv_dgengamma = pref("constant", spatial = "on", baseline = "rw",
+    formula = samp_formula3)
   )
 
 # Models whose catch model is fit_cpue_tv() (time-varying intercept) rather
 # than fit_cpue() (factor(year) effects)
-model_tv <- c("constant_xi_expected_tv_dgengamma", "zero_xi_expected_tv_dgengamma")
+model_tv <- grep("_tv_", names(model_specs), value = TRUE)
 
-# Observation family per model (delta_gamma() if not listed)
+# # Observation family per model (delta_gamma() if not listed)
 model_families <- list(
-  constant_xi_expected_dgamma = delta_gamma(),
-  zero_xi_expected_dgamma = delta_gamma(),
-  constant_xi_expected_dlnorm = delta_lognormal(),
-  zero_xi_expected_dlnorm = delta_lognormal(),
-  constant_rwbase_xi_expected_dlnorm = delta_lognormal(),
-  rw_rwbase_xi_expected_dlnorm = delta_lognormal(),
-  rw_rwbase_xi_fields_dlnorm = delta_lognormal(),
-  iid_rwbase_xi_expected_dlnorm = delta_lognormal(),
-  constant_xi_expected_dgengamma = delta_gengamma(),
-  constant_xi_expected_tv_dgengamma = delta_gengamma(),
-  zero_xi_expected_tv_dgengamma = delta_gengamma()
+#   constant_xi_expected_dgamma = delta_gamma(),
+#   zero_xi_expected_dgamma = delta_gamma(),
+#   constant_xi_expected_dlnorm = delta_lognormal(),
+#   zero_xi_expected_dlnorm = delta_lognormal(),
+#   constant_rwbase_xi_expected_dlnorm = delta_lognormal(),
+#   rw_rwbase_xi_expected_dlnorm = delta_lognormal(),
+#   rw_rwbase_xi_fields_dlnorm = delta_lognormal(),
+#   iid_rwbase_xi_expected_dlnorm = delta_lognormal(),
+#   constant_xi_expected_dgengamma = delta_gengamma(),
+#   constant_xi_expected_tv_dgengamma = delta_gengamma(),
+#   zero_xi_expected_tv_dgengamma = delta_gengamma()
 )
 
 
@@ -298,7 +308,7 @@ fits <- lapply(names(model_specs), function(nm) {
   if (file.exists(f) && !refit) return(readRDS(f))
   message("Fitting: ", nm)
   family <- model_families[[nm]]
-  if (is.null(family)) family <- delta_gamma()
+  if (is.null(family)) family <- delta_gengamma()
   fit_fun <- if (nm %in% model_tv) fit_cpue_tv else fit_cpue
   fit <- tryCatch(fit_fun(model_specs[[nm]], family = family), error = function(e) {
     message("  failed: ", conditionMessage(e))

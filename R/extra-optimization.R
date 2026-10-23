@@ -3,8 +3,9 @@
 #
 # Usage (from the project root):
 #   Rscript R/extra-optimization.R <model name> [mesh cutoff, default 15]
-# Reads  output/fit-<model>-cutoff<cutoff>.rds
-# Writes output/fit-<model>_newton-cutoff<cutoff>.rds (the original is kept)
+# Reads  <dir>/fit-<model>-cutoff<cutoff>.rds
+# Writes <dir>/fit-<model>_newton-cutoff<cutoff>.rds (the original is kept)
+# where <dir> is output/ for naive fits and models/ for joint fits
 #
 # Uses ~9 GB of memory for a joint fit; run at most two at a time.
 
@@ -15,8 +16,9 @@ cutoff <- if (length(args) > 1) args[2] else 15
 
 suppressMessages(library(sdmTMB))
 
-f_in <- file.path("output", paste0("fit-", nm, "-cutoff", cutoff, ".rds"))
-f_out <- file.path("output", paste0("fit-", nm, "_newton-cutoff", cutoff, ".rds"))
+fit_dir <- if (grepl("^naive", nm)) "output" else "models"
+f_in <- file.path(fit_dir, paste0("fit-", nm, "-cutoff", cutoff, ".rds"))
+f_out <- file.path(fit_dir, paste0("fit-", nm, "_newton-cutoff", cutoff, ".rds"))
 if (!file.exists(f_in)) stop(f_in, " not found")
 if (file.exists(f_out)) stop(f_out, " already exists")
 

@@ -41,7 +41,7 @@ f <- fit_file(nm, mesh_cutoff)
 if (file.exists(f) && !refit) stop(f, " already exists (set refit = TRUE to refit)")
 
 family <- model_families[[nm]]
-if (is.null(family)) family <- delta_gamma()
+if (is.null(family)) family <- delta_gengamma()
 spec <- model_specs[[nm]]
 cat("Fitting", nm, "| family", paste(family$family, collapse = "/"),
   "| target", spec$target, "| coefficient", spec$coefficient,
