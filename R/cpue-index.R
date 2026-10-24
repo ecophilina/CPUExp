@@ -72,9 +72,23 @@ catch_formula <- catch_kg ~ 0 + factor(year) + s(log_depth, k = 5) +
 # ~16-18 GB to build the full model either way (vs ~9 GB for constant b).
 # start: named list of starting values (e.g., from naive_start()); sdmTMB
 # applies it after the first phase, so pair it with multiphase = FALSE.
+# Lognormal prior on the random-walk SD of the preference coefficient b_t
+# (pref("rw")), sigma_b_pref ~ lognormal(log(0.1), 0.5), the same density on
+# sigma as lognormal_prior(log(0.1), 0.5) for sigma_V in fit_cpue_tv() (hence
+# the - log(sigma) term). Zero density at 0, so the SD can't collapse.
+# Adds 0 for constant/zero b, which have no sigma_b_pref (sdmTMB rejects an
+# empty result).
+pref_rw_prior <- function(par, theta) {
+  if (is.null(theta$sigma_b_pref)) return(0)
+  sigma <- theta$sigma_b_pref
+  c(sigma_b_pref = RTMB::dnorm(log(sigma), log(0.1), 0.5, log = TRUE) -
+    log(sigma))
+}
+
 fit_cpue <- function(preferential = NULL, fit_mesh = mesh,
-                     family = delta_gengamma(), multiphase = TRUE,
-                     start = NULL) {
+                     family = delta_gengamma(),
+                     priors = sdmTMBpriors(custom = pref_rw_prior),
+                     multiphase = TRUE, start = NULL) {
   sdmTMB(
     catch_formula,
     data = d,
@@ -85,6 +99,7 @@ fit_cpue <- function(preferential = NULL, fit_mesh = mesh,
     spatial = "on",
     spatiotemporal = "iid",
     preferential = preferential,
+    priors = priors,
     # Optional PC priors to stabilize range/SD estimates:
     # priors = sdmTMBpriors(matern_s = pc_matern(range_gt = 10, sigma_lt = 3),
     #                       matern_st = pc_matern(range_gt = 10, sigma_lt = 3)),
@@ -102,11 +117,16 @@ fit_cpue <- function(preferential = NULL, fit_mesh = mesh,
 catch_formula_tv <- catch_kg ~ 1 + s(log_depth, k = 5) +
   month + (1 | vessel)
 
-# The gamma prior on the random-walk SD (shape 1 / cv^2 = 4) has zero density
-# at sigma_V = 0, so it keeps the time-varying SD from collapsing.
+# The lognormal prior on the random-walk SD has zero density at sigma_V = 0,
+# so it keeps the time-varying SD from collapsing. Lognormal rather than
+# gamma_cv(0.1, 0.5) (nearly identical): a gamma with cv >= 1 loses the zero
+# density at 0, so the lognormal can be widened safely. pref_rw_prior does the
+# same for the preference random walk.
 fit_cpue_tv <- function(preferential = NULL, fit_mesh = mesh,
                      family = delta_gengamma(),
-                     priors = sdmTMBpriors(sigma_V = gamma_cv(0.1, 0.5)),
+                     priors = sdmTMBpriors(
+                       sigma_V = lognormal_prior(log(0.1), 0.5),
+                       custom = pref_rw_prior),
                      multiphase = TRUE, start = NULL) {
   sdmTMB(
     catch_formula_tv,
@@ -329,38 +349,49 @@ model_specs <- list(
   # Needs an sdmTMB dev-preferential build newer than 1.2.0.9001, which errors
   # "Unsupported: `time_varying`".
   # constant_xi_expected_tv_dgengamma = pref("constant", spatial = "on"),
-  zero_xi_expected_tv_dgengamma = pref("zero", spatial = "on"),
+  # zero_xi_expected_tv_dgengamma = pref("zero", spatial = "on"),
   # # constant preference, fields target
   # constant_xi = pref("constant", spatial = "on", target = "fields"),
-  # # constant preference, rw baseline, delta-Gamma
-  constant_rwbase_xi_expected_tv_dgengamma = pref("constant", spatial = "on", baseline = "rw",
+  # # constant preference, rw baseline, delta-genGamma
+  # constant_rwbase_xi_expected_tv_dgengamma = pref("constant", spatial = "on", baseline = "rw",
+  #   formula = samp_formula2),
+  # # b = 0 null for constant_rwbase_xi_expected_tv_dgengamma (same baseline and
+  # # sampling formula, so the likelihood-ratio test of b is valid)
+  # zero_rwbase_xi_expected_tv_dgengamma = pref("zero", spatial = "on", baseline = "rw",
+  #   formula = samp_formula2),
+  # # region in the sampling model, and its b = 0 null
+  # constant_rwbase_region_xi_expected_tv_dgengamma = pref("constant", spatial = "on",
+  #   baseline = "rw", formula = samp_formula2_region),
+  # zero_rwbase_region_xi_expected_tv_dgengamma = pref("zero", spatial = "on",
+  #   baseline = "rw", formula = samp_formula2_region),  
+  # footprint_rwbase_xi_expected_tv_dgengamma = pref("constant", spatial = "on", baseline = "rw",
+  #   formula = samp_formula3),
+  # ifootprint_rwbase_xi_expected_tv_dgengamma = pref("constant", spatial = "on", baseline = "rw",
+  #   formula = samp_formula4),
+  # iareafootprint_rwbase_xi_expected_tv_dgengamma = pref("constant", spatial = "on", baseline = "rw",
+  #   formula = samp_formula5),
+  # # b = 0 null for iareafootprint_rwbase_xi_expected_tv_dgengamma
+  # zero_iareafootprint_rwbase_xi_expected_tv_dgengamma = pref("zero", spatial = "on",
+  #   baseline = "rw", formula = samp_formula5),
+  # # Frame sensitivities for constant_rwbase_xi_expected_tv_dgengamma
+  # constant_rwbase_dropclosed_xi_expected_tv_dgengamma = pref("constant", spatial = "on",
+  #   baseline = "rw", formula = samp_formula2, data = frame_drop_closed),
+  # constant_rwbase_pre2013_xi_expected_tv_dgengamma = pref("constant", spatial = "on",
+  #   baseline = "rw", formula = samp_formula2, data = frame_pre),
+  # constant_rwbase_post2013_xi_expected_tv_dgengamma = pref("constant", spatial = "on",
+  #   baseline = "rw", formula = samp_formula2, data = frame_post),
+  # # ... and their b = 0 nulls
+  # zero_rwbase_dropclosed_xi_expected_tv_dgengamma = pref("zero", spatial = "on",
+  #   baseline = "rw", formula = samp_formula2, data = frame_drop_closed),
+  # zero_rwbase_pre2013_xi_expected_tv_dgengamma = pref("zero", spatial = "on",
+  #   baseline = "rw", formula = samp_formula2, data = frame_pre),
+  # zero_rwbase_post2013_xi_expected_tv_dgengamma = pref("zero", spatial = "on",
+  #   baseline = "rw", formula = samp_formula2, data = frame_post),
+  # trying RW on b again
+    rw_rwbase_xi_expected_tv_dgengamma = pref("rw", spatial = "on", baseline = "rw",
     formula = samp_formula2),
-  # b = 0 null for constant_rwbase_xi_expected_tv_dgengamma (same baseline and
-  # sampling formula, so the likelihood-ratio test of b is valid)
-  zero_rwbase_xi_expected_tv_dgengamma = pref("zero", spatial = "on", baseline = "rw",
-    formula = samp_formula2),
-  # region in the sampling model, and its b = 0 null
-  constant_rwbase_region_xi_expected_tv_dgengamma = pref("constant", spatial = "on",
-    baseline = "rw", formula = samp_formula2_region),
-  zero_rwbase_region_xi_expected_tv_dgengamma = pref("zero", spatial = "on",
-    baseline = "rw", formula = samp_formula2_region),  
-  footprint_rwbase_xi_expected_tv_dgengamma = pref("constant", spatial = "on", baseline = "rw",
-    formula = samp_formula3),
-  ifootprint_rwbase_xi_expected_tv_dgengamma = pref("constant", spatial = "on", baseline = "rw",
-    formula = samp_formula4),
-  iareafootprint_rwbase_xi_expected_tv_dgengamma = pref("constant", spatial = "on", baseline = "rw",
-    formula = samp_formula5),
-  # b = 0 null for iareafootprint_rwbase_xi_expected_tv_dgengamma
-  zero_iareafootprint_rwbase_xi_expected_tv_dgengamma = pref("zero", spatial = "on",
-    baseline = "rw", formula = samp_formula5),
-  # Frame sensitivities for constant_rwbase_xi_expected_tv_dgengamma
-  constant_rwbase_dropclosed_xi_expected_tv_dgengamma = pref("constant", spatial = "on",
-    baseline = "rw", formula = samp_formula2, data = frame_drop_closed),
-  constant_rwbase_pre2013_xi_expected_tv_dgengamma = pref("constant", spatial = "on",
-    baseline = "rw", formula = samp_formula2, data = frame_pre),
-  constant_rwbase_post2013_xi_expected_tv_dgengamma = pref("constant", spatial = "on",
-    baseline = "rw", formula = samp_formula2, data = frame_post)
-
+    rw_iareafootprint_rwbase_xi_expected_tv_dgengamma = pref("rw", spatial = "on", baseline = "rw",
+    formula = samp_formula5)
   )
 
 # Models whose catch model is fit_cpue_tv() (time-varying intercept) rather
