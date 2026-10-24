@@ -212,6 +212,10 @@ samp_formula3 <- sampled ~ 1 + footprint*pre_footprint + log_dist_port + poly(lo
 # errors if a region-year has all or no cells fished.
 samp_formula_region <- update(samp_formula, . ~ . + factor(year):region)
 
+# Constant regional differences in effort, for a baseline ("iid"/"rw") model.
+# Tests whether b stands in for between-region effort (R/check-negative-b.R).
+samp_formula2_region <- update(samp_formula2, . ~ . + region)
+
 
 pref <- function(coefficient = "constant", spatial = "on",
                  target = "expected", # changed to expected after Oct 20
@@ -270,6 +274,11 @@ model_specs <- list(
   # sampling formula, so the likelihood-ratio test of b is valid)
   zero_rwbase_xi_expected_tv_dgengamma = pref("zero", spatial = "on", baseline = "rw",
     formula = samp_formula2),
+  # region in the sampling model, and its b = 0 null
+  constant_rwbase_region_xi_expected_tv_dgengamma = pref("constant", spatial = "on",
+    baseline = "rw", formula = samp_formula2_region),
+  zero_rwbase_region_xi_expected_tv_dgengamma = pref("zero", spatial = "on",
+    baseline = "rw", formula = samp_formula2_region),
   ifootprint_rwbase_xi_expected_tv_dgengamma = pref("constant", spatial = "on", baseline = "rw",
     formula = samp_formula3)
   )
