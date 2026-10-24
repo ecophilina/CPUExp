@@ -70,8 +70,11 @@ catch_formula <- catch_kg ~ 0 + factor(year) + s(log_depth, k = 5) +
 # multiphase = FALSE skips the first optimization phase (fields off). Note: it
 # does not lower peak memory. Joint models with time-varying b (iid/rw) need
 # ~16-18 GB to build the full model either way (vs ~9 GB for constant b).
+# start: named list of starting values (e.g., from naive_start()); sdmTMB
+# applies it after the first phase, so pair it with multiphase = FALSE.
 fit_cpue <- function(preferential = NULL, fit_mesh = mesh,
-                     family = delta_gengamma(), multiphase = TRUE) {
+                     family = delta_gengamma(), multiphase = TRUE,
+                     start = NULL) {
   sdmTMB(
     catch_formula,
     data = d,
@@ -85,7 +88,8 @@ fit_cpue <- function(preferential = NULL, fit_mesh = mesh,
     # Optional PC priors to stabilize range/SD estimates:
     # priors = sdmTMBpriors(matern_s = pc_matern(range_gt = 10, sigma_lt = 3),
     #                       matern_st = pc_matern(range_gt = 10, sigma_lt = 3)),
-    control = sdmTMBcontrol(backend = "rtmb", multiphase = multiphase),
+    control = sdmTMBcontrol(backend = "rtmb", multiphase = multiphase,
+      start = start),
     silent = FALSE
   )
 }
@@ -102,7 +106,8 @@ catch_formula_tv <- catch_kg ~ 1 + s(log_depth, k = 5) +
 # at sigma_V = 0, so it keeps the time-varying SD from collapsing.
 fit_cpue_tv <- function(preferential = NULL, fit_mesh = mesh,
                      family = delta_gengamma(),
-                     priors = sdmTMBpriors(sigma_V = gamma_cv(0.1, 0.5))) {
+                     priors = sdmTMBpriors(sigma_V = gamma_cv(0.1, 0.5)),
+                     multiphase = TRUE, start = NULL) {
   sdmTMB(
     catch_formula_tv,
     data = d,
@@ -119,7 +124,8 @@ fit_cpue_tv <- function(preferential = NULL, fit_mesh = mesh,
     # Optional PC priors to stabilize range/SD estimates:
     # priors = sdmTMBpriors(matern_s = pc_matern(range_gt = 10, sigma_lt = 3),
     #                       matern_st = pc_matern(range_gt = 10, sigma_lt = 3)),
-    control = sdmTMBcontrol(backend = "rtmb", multiphase = TRUE),
+    control = sdmTMBcontrol(backend = "rtmb", multiphase = multiphase,
+      start = start),
     silent = FALSE
   )
 }
@@ -128,6 +134,41 @@ fit_cpue_tv <- function(preferential = NULL, fit_mesh = mesh,
 fit_file <- function(name, cutoff) {
   dir <- if (grepl("^naive", name)) "output" else "models"
   file.path(dir, paste0("fit-", name, "-cutoff", cutoff, ".rds"))
+}
+
+# Starting values from the naive fit --------------------------------------------
+
+# A joint model's catch part has the same formula, mesh, years, and family as
+# the matching naive fit, so the naive estimates (fixed effects, variance
+# parameters, and the random fields at their modes) are a good start for it.
+# The sampling-model parameters are left at sdmTMB's defaults.
+
+# Name of the naive fit matching a family and catch model, as written by
+# R/family-comparison.R (e.g., "naive_tv-delta_gengamma")
+naive_fit_name <- function(family, tv = FALSE) {
+  fam <- switch(family$family[2], Gamma = "gamma", lognormal = "lognormal",
+    gengamma = "gengamma",
+    stop("No naive fit naming rule for family ", family$family[2]))
+  plink <- if (identical(family$type, "poisson_link_delta")) "_plink" else ""
+  paste0("naive", if (tv) "_tv", "-delta_", fam, plink)
+}
+
+# Named list for fit_cpue(start = ) / fit_cpue_tv(start = ). Every parameter of
+# the naive fit is passed, at its estimate (or mode, for random effects), so
+# the joint fit starts from the converged catch model. Checks the naive fit
+# used the same mesh and number of years.
+naive_start <- function(family, tv = FALSE, cutoff = mesh_cutoff) {
+  f <- fit_file(naive_fit_name(family, tv), cutoff)
+  if (!file.exists(f)) {
+    stop(f, " not found: fit it first with R/family-comparison.R ",
+      if (tv) "tv " else "year ", sub("^naive(_tv)?-", "", naive_fit_name(family, tv)))
+  }
+  naive <- readRDS(f)
+  stopifnot(
+    "naive fit used a different mesh" = naive$spde$mesh$n == mesh$mesh$n,
+    "naive fit used different years" = identical(sort(unique(naive$data$year)), sort(unique(d$year)))
+  )
+  naive$tmb_obj$env$parList()
 }
 
 # Mesh sensitivity -------------------------------------------------------------
@@ -205,7 +246,14 @@ samp_formula <- sampled ~ 0 + factor(year) + log_dist_port + poly(log_depth, 2)
 
 samp_formula2 <- sampled ~ 1 + log_dist_port + poly(log_depth, 2)
 
-samp_formula3 <- sampled ~ 1 + footprint*pre_footprint + log_dist_port + poly(log_depth, 2)
+samp_formula3 <- sampled ~ 1 + footprint + pre_footprint + log_dist_port + poly(log_depth, 2)
+
+samp_formula4 <- sampled ~ 1 + footprint*pre_footprint + log_dist_port + poly(log_depth, 2)
+
+# Official 2012 footprint polygon: footprint_area = share of the cell inside
+# it (R/data-prep.R). Unlike the data-driven footprint, cells outside it were
+# still fished from footprint_year on, so the interaction has no separation.
+samp_formula5 <- sampled ~ 1 + footprint_area*pre_footprint + log_dist_port + poly(log_depth, 2)
 
 # Sensitivity: allow the regional distribution of effort to shift by year
 # (unmodelled shifts get attributed to b; see docs). Watch for separation
@@ -217,15 +265,32 @@ samp_formula_region <- update(samp_formula, . ~ . + factor(year):region)
 samp_formula2_region <- update(samp_formula2, . ~ . + region)
 
 
+# Frame sensitivities. The frame's years only need to fall within the catch
+# model's years, and cells can differ by year (one row per cell x year).
+footprint_year <- prepped$settings$footprint_year
+# 1. Drop cell-years from footprint_year on for cells < 10% inside the official
+#    footprint and not fished from footprint_year on (treated as closed, not
+#    as unfished)
+frame_drop_closed <- filter(frame,
+  !(year >= footprint_year & footprint_area < 0.1 & footprint == 0))
+# 2. Frame before the footprint freeze only
+frame_pre <- filter(frame, year < footprint_year)
+# 3. Frame from the footprint freeze on only
+frame_post <- filter(frame, year >= footprint_year)
+
 pref <- function(coefficient = "constant", spatial = "on",
                  target = "expected", # changed to expected after Oct 20
                  baseline = "off", # off, iid, or rw
-                 formula = samp_formula) {
+                 formula = samp_formula,
+                 data = frame) {
   # A baseline ("iid"/"rw") needs a formula with an intercept and no
   # factor(year) (e.g., samp_formula2); "off" pairs with samp_formula.
+  # In years without frame rows, the rw baseline is set by the random walk
+  # alone. poly() terms are rebuilt from `data`, so their coefficients are not
+  # comparable across frames (the fitted curves are).
   preferential_sampling(
     formula,
-    data = frame,
+    data = data,
     re_form_iid = NA, # IID REs from the surface (default)
     offset = 0, #surface offset, 0 = unit exposure
     target = target, # fields or expected
@@ -278,9 +343,24 @@ model_specs <- list(
   constant_rwbase_region_xi_expected_tv_dgengamma = pref("constant", spatial = "on",
     baseline = "rw", formula = samp_formula2_region),
   zero_rwbase_region_xi_expected_tv_dgengamma = pref("zero", spatial = "on",
-    baseline = "rw", formula = samp_formula2_region),
+    baseline = "rw", formula = samp_formula2_region),  
+  footprint_rwbase_xi_expected_tv_dgengamma = pref("constant", spatial = "on", baseline = "rw",
+    formula = samp_formula3),
   ifootprint_rwbase_xi_expected_tv_dgengamma = pref("constant", spatial = "on", baseline = "rw",
-    formula = samp_formula3)
+    formula = samp_formula4),
+  iareafootprint_rwbase_xi_expected_tv_dgengamma = pref("constant", spatial = "on", baseline = "rw",
+    formula = samp_formula5),
+  # b = 0 null for iareafootprint_rwbase_xi_expected_tv_dgengamma
+  zero_iareafootprint_rwbase_xi_expected_tv_dgengamma = pref("zero", spatial = "on",
+    baseline = "rw", formula = samp_formula5),
+  # Frame sensitivities for constant_rwbase_xi_expected_tv_dgengamma
+  constant_rwbase_dropclosed_xi_expected_tv_dgengamma = pref("constant", spatial = "on",
+    baseline = "rw", formula = samp_formula2, data = frame_drop_closed),
+  constant_rwbase_pre2013_xi_expected_tv_dgengamma = pref("constant", spatial = "on",
+    baseline = "rw", formula = samp_formula2, data = frame_pre),
+  constant_rwbase_post2013_xi_expected_tv_dgengamma = pref("constant", spatial = "on",
+    baseline = "rw", formula = samp_formula2, data = frame_post)
+
   )
 
 # Models whose catch model is fit_cpue_tv() (time-varying intercept) rather

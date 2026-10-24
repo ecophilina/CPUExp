@@ -20,27 +20,29 @@ index_dir <- file.path("output", "indices")
 dir.create(index_dir, showWarnings = FALSE)
 
 # label = fit name (output/ or models/fit-<name>-cutoff<mesh_cutoff>.rds; see
-# fit_path()). Joint fits use
-# their converged (_newton) versions where a Newton step was needed.
+# fit_path()). Joint fits use their converged (_newton) versions where a
+# Newton step was needed.
+#
+# 6 km frame: all fits are delta-gengamma with the time-varying (rw0) catch
+# intercept; joint fits have the rw sampling baseline and sampling field.
+# `sampling` = the sampling-model covariates beyond depth and port distance,
+# one panel each (NA for the naive fit, which is drawn in every panel).
+# Not included: ifootprint_rwbase_xi_expected_tv_dgengamma (complete
+# separation in the data-driven footprint interaction; fails sanity()).
+# 4 km frame fits are in models/4km frame/ and output/4km frame/.
 models <- tribble(
-  ~label, ~fit, ~family, ~model_type,
-  "naive", "naive-delta_gamma", "delta-Gamma", "naive",
-  "zero", "zero_xi_expected_dgamma_newton", "delta-Gamma", "joint, b = 0",
-  "constant (fields)", "constant_xi_newton", "delta-Gamma", "joint",
-  "constant (expected)", "constant_xi_expected_dgamma_newton", "delta-Gamma", "joint",
-  "constant, rw baseline", "constant_rwbase_xi", "delta-Gamma", "joint",
-  "naive", "naive-delta_lognormal", "delta-lognormal", "naive",
-  "zero", "zero_xi_expected_dlnorm_newton", "delta-lognormal", "joint, b = 0",
-  "constant (expected)", "constant_xi_expected_dlnorm_newton", "delta-lognormal", "joint",
-  "constant, rw baseline", "constant_rwbase_xi_expected_dlnorm", "delta-lognormal", "joint",
-  # The expected-target version ran out of memory (~16 GB+); fields instead
-  "rw b_t, rw baseline (fields)", "rw_rwbase_xi_fields_dlnorm", "delta-lognormal", "joint",
-  "naive", "naive-delta_gengamma", "delta-gengamma", "naive",
-  "constant (expected)", "constant_xi_expected_dgengamma", "delta-gengamma", "joint",
-  # Time-varying (rw0) catch intercept instead of factor(year)
-  "naive, tv intercept", "naive_tv-delta_gengamma", "delta-gengamma", "naive",
-  "zero, tv intercept", "zero_xi_expected_tv_dgengamma", "delta-gengamma", "joint, b = 0",
-  "constant (expected), tv intercept", "constant_xi_expected_tv_dgengamma", "delta-gengamma", "joint"
+  ~label, ~fit, ~sampling, ~model_type,
+  "naive", "naive_tv-delta_gengamma", NA, "naive",
+  "b = 0", "zero_rwbase_xi_expected_tv_dgengamma", "depth + port", "joint, b = 0",
+  "constant b", "constant_rwbase_xi_expected_tv_dgengamma", "depth + port", "joint",
+  "b = 0", "zero_rwbase_region_xi_expected_tv_dgengamma", "+ region", "joint, b = 0",
+  "constant b", "constant_rwbase_region_xi_expected_tv_dgengamma", "+ region", "joint",
+  "constant b, data-driven footprint", "footprint_rwbase_xi_expected_tv_dgengamma",
+  "+ footprint", "joint",
+  "b = 0, official footprint area x pre", "zero_iareafootprint_rwbase_xi_expected_tv_dgengamma",
+  "+ footprint", "joint, b = 0",
+  "constant b, official footprint area x pre", "iareafootprint_rwbase_xi_expected_tv_dgengamma",
+  "+ footprint", "joint"
 )
 
 # Naive indices were already computed by R/family-comparison.R
@@ -95,26 +97,40 @@ indices <- models |>
   ) |>
   ungroup()
 
-ggplot(indices, aes(year, rel_est, colour = label, fill = label)) +
+# The naive index has no `sampling` value, so dropping that column repeats it
+# in every panel as the reference
+joint <- filter(indices, !is.na(sampling)) |>
+  mutate(sampling = factor(sampling, levels = unique(models$sampling[!is.na(models$sampling)])))
+naive <- filter(indices, is.na(sampling)) |> select(-sampling)
+ggplot(joint, aes(year, rel_est, colour = label, fill = label)) +
+  geom_ribbon(aes(year, ymin = rel_lwr, ymax = rel_upr), data = naive,
+    inherit.aes = FALSE, fill = "grey50", alpha = 0.15) +
+  geom_line(aes(year, rel_est), data = naive, inherit.aes = FALSE,
+    colour = "grey30", linewidth = 0.8) +
   geom_ribbon(aes(ymin = rel_lwr, ymax = rel_upr), alpha = 0.1, colour = NA) +
-  geom_line() +
-  facet_wrap(~family, ncol = 1) +
+  geom_line(aes(linetype = model_type)) +
+  facet_wrap(~sampling, ncol = 1) +
+  scale_linetype_manual(values = c("joint" = "solid", "joint, b = 0" = "22"),
+    guide = "none") +
   labs(x = "Year", y = "Relative index (geometric mean = 1)",
-    colour = NULL, fill = NULL) +
-  theme_light()
-ggsave("figs/index-joint-comparison.png", width = 9, height = 8)
+    colour = NULL, fill = NULL,
+    caption = "Grey: naive (catch-only) index. Dashed: b = 0 joint fits.") +
+  theme_light() +
+  theme(legend.position = "bottom") +
+  guides(colour = guide_legend(ncol = 2), fill = guide_legend(ncol = 2))
+ggsave(paste0("figs/index-joint-comparison-", cell_km, "km.png"), width = 9, height = 10)
 
 # Log-linear trend: the quantity preferential sampling can bias (the scale is
 # absorbed by catchability in the assessment)
 trends <- indices |>
-  group_by(family, label, model_type, fit) |>
+  group_by(sampling, label, model_type, fit) |>
   summarise(
     slope = coef(lm(log_est ~ year))[[2]],
     change_30y = exp(slope * (max(year) - min(year))) - 1,
     mean_cv = mean(sqrt(exp(se^2) - 1)),
     .groups = "drop"
   ) |>
-  arrange(family, model_type)
+  arrange(sampling, model_type)
 print(trends, width = Inf)
 
 saveRDS(indices, file.path("output", "index-joint-comparison.rds"))

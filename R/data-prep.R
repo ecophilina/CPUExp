@@ -28,6 +28,9 @@ max_hours <- 10 # drop implausible tow durations
 depth_quantiles <- c(0.01, 0.99) # trim depth range using positive tows
 majors <- formatC(3:9, width = 2, flag = "0") # 3C, 3D, 5A, 5B, 5C, 5D, 5E (GFFOS major stat area codes)
 
+# Official 2012 groundfish trawl footprint polygon (WGS 84)
+footprint_file <- "data/TrawlFootprint/Trawl_Footprint_Final_May_14_2012_LL.shp"
+
 # Approximate trawl offload ports (lon, lat); replace with the ports that
 # matter for this fleet, or with a steaming-distance layer.
 ports <- data.frame(
@@ -315,6 +318,73 @@ footprint_cells |>
   theme(legend.position = "bottom")
 ggsave(paste0("figs/frame-footprint-map-", cell_km, "km.png"), width = 7, height = 8)
 
+# Official footprint: the 2012 trawl footprint polygon (WGS 84), moved into the
+# frame's coordinates (UTM km, shifted by xy_offset). footprint_area = share of
+# each frame cell's area inside the polygon (6 km cells often straddle its
+# edge, so this is more robust than testing the cell centre); footprint_2012 =
+# 1 if at least half the cell is inside. An alternative to the data-driven
+# footprint above: it does not depend on where the fleet happened to fish.
+footprint_poly <- sf::st_read(footprint_file, quiet = TRUE) |>
+  sf::st_transform(utm_crs) |>
+  sf::st_geometry() |>
+  sf::st_union()
+footprint_poly <- sf::st_set_crs(
+  footprint_poly / 1000 - c(xy_offset[["X"]], xy_offset[["Y"]]), NA)
+cell_polys <- sf::st_sfc(lapply(seq_len(nrow(footprint_cells)), function(i) {
+  x <- footprint_cells$X[i] + c(-1, 1, 1, -1, -1) * cell_km / 2
+  y <- footprint_cells$Y[i] + c(-1, -1, 1, 1, -1) * cell_km / 2
+  sf::st_polygon(list(cbind(x, y)))
+}))
+footprint_cells$footprint_area <- vapply(
+  sf::st_intersects(cell_polys, footprint_poly),
+  function(hit) length(hit) > 0, logical(1))
+inside <- which(footprint_cells$footprint_area)
+footprint_cells$footprint_area <- 0
+footprint_cells$footprint_area[inside] <- as.numeric(sf::st_area(
+  sf::st_intersection(cell_polys[inside], footprint_poly))) / cell_km^2
+footprint_cells <- footprint_cells |>
+  mutate(footprint_2012 = as.integer(footprint_area >= 0.5))
+frame <- frame |>
+  left_join(select(footprint_cells, X, Y, footprint_area, footprint_2012),
+    by = c("X", "Y"))
+
+# How the two footprint definitions agree. Cells outside the official
+# footprint that were still fished from footprint_year on suggest edge
+# mismatch (cell size, positional error) or the polygon not being the whole
+# story; if there are none, footprint_2012 has the same separation problem as
+# footprint.
+print(count(footprint_cells, footprint_2012, footprint))
+cat("Frame cell-years outside the official footprint from", footprint_year,
+  "on that were fished:",
+  sum(frame$sampled[frame$footprint_2012 == 0 & frame$year >= footprint_year]),
+  "of", sum(frame$footprint_2012 == 0 & frame$year >= footprint_year), "\n")
+
+footprint_cells |>
+  mutate(agreement = factor(paste(footprint_2012, footprint),
+    levels = c("1 1", "1 0", "0 1", "0 0"),
+    labels = c("In both",
+      paste0("Official only (not fished ", footprint_year, "+)"),
+      paste0("Fished ", footprint_year, "+ only (outside official)"),
+      "Neither"))) |>
+  ggplot() +
+  geom_tile(aes(X, Y, fill = agreement), width = cell_km, height = cell_km) +
+  geom_sf(data = footprint_poly, fill = NA, colour = "grey20", linewidth = 0.2) +
+  geom_point(aes(X, Y), data = ports, shape = 17, size = 2) +
+  geom_text(aes(X, Y, label = port), data = ports, hjust = -0.15, size = 3) +
+  scale_fill_manual(values = c("#2c7fb8", "#a6cee3", "#f03b20", "#fdae61"),
+    name = NULL, drop = FALSE) +
+  coord_sf(xlim = range(footprint_cells$X) + c(-20, 190),
+    ylim = range(footprint_cells$Y) + c(-20, 20), expand = FALSE) +
+  labs(x = "X (km)", y = "Y (km)",
+    title = paste0("Official 2012 trawl footprint vs fishing from ",
+      footprint_year, " (", cell_km, " km cells)"),
+    subtitle = "Outline: official footprint polygon") +
+  theme_light() +
+  theme(legend.position = "bottom") +
+  guides(fill = guide_legend(ncol = 2))
+ggsave(paste0("figs/frame-footprint-official-", cell_km, "km.png"),
+  width = 7, height = 8.5)
+
 frame |>
   group_by(year) |>
   summarise(prop_sampled = mean(sampled), n_cells = n()) |>
@@ -343,7 +413,7 @@ saveRDS(
       min_positive_trips = min_positive_trips,
       min_yrs_with_trips = min_yrs_with_trips, max_hours = max_hours,
       depth_quantiles = depth_quantiles, majors = majors, ports = ports,
-      footprint_year = footprint_year
+      footprint_year = footprint_year, footprint_file = footprint_file
     ),
     created = Sys.time()
   ),
