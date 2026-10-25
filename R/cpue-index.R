@@ -72,22 +72,61 @@ catch_formula <- catch_kg ~ 0 + factor(year) + s(log_depth, k = 5) +
 # ~16-18 GB to build the full model either way (vs ~9 GB for constant b).
 # start: named list of starting values (e.g., from naive_start()); sdmTMB
 # applies it after the first phase, so pair it with multiphase = FALSE.
-# Lognormal prior on the random-walk SD of the preference coefficient b_t
-# (pref("rw")), sigma_b_pref ~ lognormal(log(0.1), 0.5), the same density on
-# sigma as lognormal_prior(log(0.1), 0.5) for sigma_V in fit_cpue_tv() (hence
-# the - log(sigma) term). Zero density at 0, so the SD can't collapse.
-# Adds 0 for constant/zero b, which have no sigma_b_pref (sdmTMB rejects an
-# empty result).
-pref_rw_prior <- function(par, theta) {
-  if (is.null(theta$sigma_b_pref)) return(0)
-  sigma <- theta$sigma_b_pref
-  c(sigma_b_pref = RTMB::dnorm(log(sigma), log(0.1), 0.5, log = TRUE) -
-    log(sigma))
+# Priors (penalties) to help the joint fits, following docs/06_quadrature.R
+# but widened to sit comfortably around earlier estimates (constant b, rw
+# baseline: catch range ~34 km, sigma_O ~2.0/1.4, sigma_E ~0.7; sampling field
+# range ~79 km, sigma_xi ~5.8; sigma_alpha_pref ~0.16). The docs' sampling-field
+# prior, P(sigma > 1) = 0.05, would fight sigma_xi ~5.8.
+# - Catch fields: PC Matern, P(range < 10 km) = 0.05, P(sigma > 5) = 0.05.
+catch_field_prior <- pc_matern(range_gt = 10, sigma_lt = 5)
+
+# Custom priors on the sampling model (sdmTMBpriors(custom = )), each added
+# only if the model has the parameter:
+# - Preference random-walk SD (pref("rw")): log(sigma_b_pref) ~
+#   N(log(0.3), 0.5), as for log_sigma_b in docs/06_quadrature.R (a penalty
+#   on log sigma, so mode 0.3; no - log(sigma) term). Wider than
+#   lognormal(log(0.1), 0.5), which gave sigma_b_pref ~0.044 and positive
+#   b_t, vs b ~ -0.5 with constant b: lets b_t move further if the data want.
+# - Baseline random-walk SD (baseline = "rw"): lognormal(log(0.1), 0.5), as
+#   for sigma_V in fit_cpue_tv().
+#   Both have zero density at 0, so the SDs can't collapse.
+# - Sampling field xi (spatial = "on"): PC Matern, P(range < 10 km) = 0.05,
+#   P(sigma > 10) = 0.05.
+# Adds 0 if none apply (sdmTMB rejects an empty result). The fit stores this
+# function and calls it again on reload (report(), predict()), so it must not
+# use anything defined outside it: the helpers live inside.
+sampling_priors <- function(par, theta) {
+  # lognormal(meanlog, sdlog) log density on x itself (hence - log(x)), as
+  # sdmTMB's lognormal_prior()
+  lognormal_lpdf <- function(x, meanlog, sdlog) {
+    RTMB::dnorm(log(x), meanlog, sdlog, log = TRUE) - log(x)
+  }
+  # PC Matern log density, as sdmTMB's (internal) rtmb_pc_matern(): P(range <
+  # range_gt) = P(sigma > sigma_lt) = prob
+  pc_matern_lpdf <- function(range, sigma, range_gt, sigma_lt, prob = 0.05) {
+    lambda_range <- -log(prob) * range_gt
+    lambda_sigma <- -log(prob) / sigma_lt
+    log(lambda_sigma) - lambda_sigma * sigma +
+      log(lambda_range) - 2 * log(range) - lambda_range / range
+  }
+  lp <- 0
+  if (!is.null(theta$sigma_b_pref)) {
+    lp <- lp + RTMB::dnorm(log(theta$sigma_b_pref), log(0.3), 0.5, log = TRUE)
+  }
+  if (!is.null(theta$sigma_alpha_pref)) {
+    lp <- lp + lognormal_lpdf(theta$sigma_alpha_pref, log(0.1), 0.5)
+  }
+  if (!is.null(theta$xi$sigma)) {
+    lp <- lp + pc_matern_lpdf(theta$xi$range, theta$xi$sigma,
+      range_gt = 10, sigma_lt = 10)
+  }
+  c(sampling = lp)
 }
 
 fit_cpue <- function(preferential = NULL, fit_mesh = mesh,
                      family = delta_gengamma(),
-                     priors = sdmTMBpriors(custom = pref_rw_prior),
+                     priors = sdmTMBpriors(matern_s = catch_field_prior,
+                       matern_st = catch_field_prior, custom = sampling_priors),
                      multiphase = TRUE, start = NULL) {
   sdmTMB(
     catch_formula,
@@ -100,9 +139,6 @@ fit_cpue <- function(preferential = NULL, fit_mesh = mesh,
     spatiotemporal = "iid",
     preferential = preferential,
     priors = priors,
-    # Optional PC priors to stabilize range/SD estimates:
-    # priors = sdmTMBpriors(matern_s = pc_matern(range_gt = 10, sigma_lt = 3),
-    #                       matern_st = pc_matern(range_gt = 10, sigma_lt = 3)),
     control = sdmTMBcontrol(backend = "rtmb", multiphase = multiphase,
       start = start),
     silent = FALSE
@@ -120,13 +156,15 @@ catch_formula_tv <- catch_kg ~ 1 + s(log_depth, k = 5) +
 # The lognormal prior on the random-walk SD has zero density at sigma_V = 0,
 # so it keeps the time-varying SD from collapsing. Lognormal rather than
 # gamma_cv(0.1, 0.5) (nearly identical): a gamma with cv >= 1 loses the zero
-# density at 0, so the lognormal can be widened safely. pref_rw_prior does the
-# same for the preference random walk.
+# density at 0, so the lognormal can be widened safely. sampling_priors does
+# the same for the preference and baseline random walks.
 fit_cpue_tv <- function(preferential = NULL, fit_mesh = mesh,
                      family = delta_gengamma(),
                      priors = sdmTMBpriors(
                        sigma_V = lognormal_prior(log(0.1), 0.5),
-                       custom = pref_rw_prior),
+                       matern_s = catch_field_prior,
+                       matern_st = catch_field_prior,
+                       custom = sampling_priors),
                      multiphase = TRUE, start = NULL) {
   sdmTMB(
     catch_formula_tv,
@@ -141,9 +179,6 @@ fit_cpue_tv <- function(preferential = NULL, fit_mesh = mesh,
     spatial = "on",
     spatiotemporal = "iid",
     preferential = preferential,
-    # Optional PC priors to stabilize range/SD estimates:
-    # priors = sdmTMBpriors(matern_s = pc_matern(range_gt = 10, sigma_lt = 3),
-    #                       matern_st = pc_matern(range_gt = 10, sigma_lt = 3)),
     control = sdmTMBcontrol(backend = "rtmb", multiphase = multiphase,
       start = start),
     silent = FALSE
