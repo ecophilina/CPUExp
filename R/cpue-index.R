@@ -14,7 +14,8 @@
 #      in the assessment cannot absorb).
 #
 # Data prep, exploratory plots, the sampling frame, and the index grid are in
-# R/data-prep.R, which saves data/cpue-index-clean.rds. Run that first.
+# R/data-prep.R, which saves <species>/data/cpue-index-clean.rds. Run that
+# first. The species is set in R/species.R (CPUE_SPECIES environment variable).
 #
 # Requires sdmTMB from the dev-preferential branch (RTMB backend).
 
@@ -23,8 +24,7 @@ library(dplyr)
 library(ggplot2)
 library(sdmTMB)
 
-dir.create("output", showWarnings = FALSE)
-dir.create("figs", showWarnings = FALSE)
+source("R/species.R") # species, its folders, read_prepped(), fit_file()
 
 # Settings ---------------------------------------------------------------------
 
@@ -35,7 +35,7 @@ refit <- FALSE # set TRUE to ignore cached fits
 
 # Data -------------------------------------------------------------------------
 
-prepped <- readRDS("data/cpue-index-clean.rds") # from R/data-prep.R
+prepped <- read_prepped() # from R/data-prep.R
 d <- prepped$d # catch data: one row per tow
 frame <- prepped$frame # sampling frame: one row per eligible cell x year
 grid <- prepped$grid # index grid: frame cells, reference month, unit effort
@@ -183,12 +183,6 @@ fit_cpue_tv <- function(preferential = NULL, fit_mesh = mesh,
   )
 }
 
-# Joint fits (with a preference/sampling frame) go in models/; naive in output/
-fit_file <- function(name, cutoff) {
-  dir <- if (grepl("^naive", name)) "output" else "models"
-  file.path(dir, paste0("fit-", name, "-cutoff", cutoff, ".rds"))
-}
-
 # Starting values from the naive fit --------------------------------------------
 
 # A joint model's catch part has the same formula, mesh, years, and family as
@@ -282,8 +276,8 @@ if (run_mesh_test) {
     labs(x = "Year", y = "Relative index (geometric mean = 1)",
       colour = "Mesh cutoff (km)") +
     theme_light()
-  ggsave("figs/mesh-sensitivity-index.png", width = 8, height = 5)
-  write.csv(mesh_summary, "output/mesh-sensitivity.csv", row.names = FALSE)
+  ggsave(file.path(fig_dir, "mesh-sensitivity-index.png"), width = 8, height = 5)
+  write.csv(mesh_summary, file.path(out_dir, "mesh-sensitivity.csv"), row.names = FALSE)
 }
 
 # Main mesh for the model comparison below
@@ -510,7 +504,7 @@ ggplot(b_t, aes(seq_along(estimate) + min(years) - 1, estimate)) +
   geom_pointrange(aes(ymin = conf.low, ymax = conf.high)) +
   geom_hline(yintercept = 0, lty = 2) +
   labs(x = "Year", y = "Preference coefficient b_t")
-ggsave("figs/b-pref-by-year.png", width = 6, height = 4)
+ggsave(file.path(fig_dir, "b-pref-by-year.png"), width = 6, height = 4)
 
 # Fitted vs observed sampling for a few years
 ps <- predict_sampling(fits$rw, type = "response")
@@ -522,7 +516,7 @@ ps |>
   facet_wrap(~year) +
   scale_fill_viridis_c(name = "P(fished)") +
   coord_fixed()
-ggsave("figs/sampling-probability.png", width = 8, height = 8)
+ggsave(file.path(fig_dir, "sampling-probability.png"), width = 8, height = 8)
 
 # Catch-model residuals (conditional on fitted fields)
 d$resid1 <- residuals(fits$rw, type = "mle-mvn", model = 1)
@@ -559,7 +553,7 @@ ggplot(indices, aes(year, rel_est, colour = model, fill = model)) +
   geom_line() +
   labs(x = "Year", y = "Relative index (geometric mean = 1)") +
   theme_light()
-ggsave("figs/index-comparison.png", width = 8, height = 5)
+ggsave(file.path(fig_dir, "index-comparison.png"), width = 8, height = 5)
 
 # Log-linear trend by model: the joint-vs-naive difference here is the
 # quantity that matters for the assessment (scale is absorbed by q).
@@ -567,7 +561,7 @@ indices |>
   group_by(model) |>
   summarise(slope = coef(lm(log_est ~ year))[[2]])
 
-saveRDS(indices, "output/indices.rds")
+saveRDS(indices, file.path(out_dir, "indices.rds"))
 
 # Assessment input -------------------------------------------------------------
 
@@ -584,5 +578,5 @@ ss_index <- indices |>
     obs = rel_est,
     se_log = se
   )
-write.csv(ss_index, "output/cpue-index-ss3.csv", row.names = FALSE)
-write.csv(indices, "output/cpue-index-all-models.csv", row.names = FALSE)
+write.csv(ss_index, file.path(out_dir, "cpue-index-ss3.csv"), row.names = FALSE)
+write.csv(indices, file.path(out_dir, "cpue-index-all-models.csv"), row.names = FALSE)

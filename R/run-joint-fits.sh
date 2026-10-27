@@ -3,14 +3,19 @@
 # processes, in phases of at most two: each joint fit needs ~9 GB of memory.
 #
 # Usage (from the project root): bash R/run-joint-fits.sh
-# Logs go to output/logs/fit-<model>.log. Models with a cached fit are skipped.
+#   or: CPUE_SPECIES="pacific ocean perch" bash R/run-joint-fits.sh
+# Logs go to <species>/output/logs/fit-<model>.log. Models with a cached fit
+# are skipped.
 
 cd "$(dirname "$0")/.." || exit 1
-mkdir -p output/logs
+export CPUE_SPECIES="${CPUE_SPECIES:-redbanded rockfish}"
+logs="$CPUE_SPECIES/output/logs"
+mkdir -p "$logs"
 
 fit() {
-  Rscript R/fit-joint.R "$1" > "output/logs/fit-$1.log" 2>&1
-  echo "[$(date +%H:%M)] $1 exit $?: $(grep -hE 'FIT DONE|all_ok|Error|already exists' "output/logs/fit-$1.log" | tr '\n' ' ')"
+  Rscript R/fit-joint.R "$1" > "$logs/fit-$1.log" 2>&1
+  local status=$?
+  echo "[$(date +%H:%M)] $1 exit $status:$(grep -hE 'FIT DONE|all_ok|Error|already exists' "$logs/fit-$1.log" | tr '\n' ' ')"
 }
 
 echo "[$(date +%H:%M)] phase 1: delta-Gamma"

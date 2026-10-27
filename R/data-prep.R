@@ -2,7 +2,7 @@
 #
 # Builds the catch data (one row per tow), runs exploratory plots, builds the
 # preferential-sampling frame and the index grid, and saves them to
-# data/cpue-index-clean.rds for R/cpue-index.R and later scripts.
+# <species>/data/cpue-index-clean.rds for R/cpue-index.R and later scripts.
 #
 # DRAFT where (cell size, fleet definition, depth trimming, ports, regions) are
 # placeholders to be checked against the data and the assessment's needs.
@@ -11,13 +11,12 @@ library(dplyr)
 library(ggplot2)
 library(sdmTMB) # add_utm_columns()
 
-dir.create("figs", showWarnings = FALSE)
+source("R/species.R") # species (CPUE_SPECIES) and its folders
 
-out_file <- "data/cpue-index-clean.rds"
+out_file <- file.path(data_dir, "cpue-index-clean.rds")
 
 # Settings ---------------------------------------------------------------------
 
-species <- "redbanded rockfish"
 final_year <- 2025
 utm_crs <- 32609 # UTM zone 9N
 cell_km <- 6 # sampling-frame cell size; b and gamma depend on this choice
@@ -156,7 +155,7 @@ ggplot(bin_year, aes(bin_X, bin_Y, fill = ifelse(mean_cpue > 0, mean_cpue, NA)))
   coord_fixed() +
   labs(x = "X (km)", y = "Y (km)") +
   theme_light()
-ggsave("figs/explore-cpue-map.png", width = 12, height = 14)
+ggsave(file.path(fig_dir, "explore-cpue-map.png"), width = 12, height = 14)
 
 # Encounter rate by bin and year
 ggplot(bin_year, aes(bin_X, bin_Y, fill = prop_pos)) +
@@ -166,7 +165,7 @@ ggplot(bin_year, aes(bin_X, bin_Y, fill = prop_pos)) +
   coord_fixed() +
   labs(x = "X (km)", y = "Y (km)") +
   theme_light()
-ggsave("figs/explore-encounter-map.png", width = 12, height = 14)
+ggsave(file.path(fig_dir, "explore-encounter-map.png"), width = 12, height = 14)
 
 # Spread of bin-level CPUE within each year (positive bins only)
 bin_year |>
@@ -177,7 +176,7 @@ bin_year |>
   labs(x = "Year", y = "Mean CPUE per bin (kg/h, positive bins)") +
   theme_light() +
   theme(axis.text.x = element_text(angle = 90, vjust = 0.5))
-ggsave("figs/explore-cpue-spread.png", width = 10, height = 5)
+ggsave(file.path(fig_dir, "explore-cpue-spread.png"), width = 10, height = 5)
 
 # Annual summaries: effort, footprint, encounter rate, and raw catch rates
 d_explore |>
@@ -198,7 +197,7 @@ d_explore |>
   facet_wrap(~name, scales = "free_y", ncol = 2) +
   labs(x = "Year", y = NULL) +
   theme_light()
-ggsave("figs/explore-annual-summary.png", width = 9, height = 8)
+ggsave(file.path(fig_dir, "explore-annual-summary.png"), width = 9, height = 8)
 
 # Centre of gravity of effort vs catch: if catch moves away from effort (or
 # effort tracks catch), that hints at shifting preferential sampling.
@@ -215,7 +214,7 @@ d_explore |>
   facet_wrap(~axis, scales = "free_y", ncol = 1) +
   labs(x = "Year", y = "Centre of gravity (km)", colour = NULL) +
   theme_light()
-ggsave("figs/explore-centre-of-gravity.png", width = 7, height = 6)
+ggsave(file.path(fig_dir, "explore-centre-of-gravity.png"), width = 7, height = 6)
 
 
 # Sampling frame ---------------------------------------------------------------
@@ -316,7 +315,7 @@ footprint_cells |>
       footprint_year)) +
   theme_light() +
   theme(legend.position = "bottom")
-ggsave(paste0("figs/frame-footprint-map-", cell_km, "km.png"), width = 7, height = 8)
+ggsave(paste0(fig_dir, "/frame-footprint-map-", cell_km, "km.png"), width = 7, height = 8)
 
 # Official footprint: the 2012 trawl footprint polygon (WGS 84), moved into the
 # frame's coordinates (UTM km, shifted by xy_offset). footprint_area = share of
@@ -382,7 +381,7 @@ footprint_cells |>
   theme_light() +
   theme(legend.position = "bottom") +
   guides(fill = guide_legend(ncol = 2))
-ggsave(paste0("figs/frame-footprint-official-", cell_km, "km.png"),
+ggsave(paste0(fig_dir, "/frame-footprint-official-", cell_km, "km.png"),
   width = 7, height = 8.5)
 
 frame |>

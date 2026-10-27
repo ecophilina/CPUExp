@@ -24,7 +24,7 @@
 #   as "tv"; refit with the current fit_cpue_tv() priors, as "tv" fits predate
 #   them), or "tv_ar1" (as "tv_iid" with AR(1) spatiotemporal fields). Files
 #   are tagged with the variant (e.g.
-#   output/fit-naive_tv-delta_gamma-cutoff15.rds).
+#   <species>/output/fit-naive_tv-delta_gamma-cutoff15.rds).
 # family: fit only this family and stop (to run families as parallel
 #   processes); then rerun without it to compare the cached fits.
 
@@ -37,8 +37,8 @@ tag <- if (variant == "year") "" else paste0("_", variant)
 # Setup from the main script ---------------------------------------------------
 
 # Runs R/cpue-index.R up to (not including) the mesh sensitivity section: loads
-# data/cpue-index-clean.rds (run R/data-prep.R first) and defines
-# build_mesh(), the formulas, fit_cpue(), and fit_file().
+# <species>/data/cpue-index-clean.rds (run R/data-prep.R first) and defines
+# build_mesh(), the formulas, and fit_cpue() (species setup: R/species.R).
 ex <- parse("R/cpue-index.R", keep.source = FALSE)
 stop_at <- which(vapply(ex, function(e) {
   is.call(e) && identical(e[[1]], as.name("if")) &&
@@ -132,7 +132,7 @@ print(fam_summary)
 # Only compare families whose fits pass sanity()
 ok <- fam_summary$family[fam_summary$converged]
 if (length(ok) == 0) {
-  write.csv(fam_summary, paste0("output/family-comparison", tag, ".csv"),
+  write.csv(fam_summary, paste0(out_dir, "/family-comparison", tag, ".csv"),
     row.names = FALSE)
   message("No fits pass sanity(); wrote the convergence/AIC table only.")
   quit(status = 0)
@@ -147,7 +147,7 @@ if (length(ok) == 0) {
 # judge the QQ plots and the size of the discrepancies, not the p-values.
 obs <- d$catch_kg
 
-checks_dir <- file.path("output", "family-checks")
+checks_dir <- file.path(out_dir, "family-checks")
 dir.create(checks_dir, showWarnings = FALSE)
 
 # Simulation checks, QQ plot, and index for one family; cached per family
@@ -161,7 +161,7 @@ family_checks <- function(nm) {
 
   q_pos <- function(x, p) quantile(x[x > 0], p, names = FALSE)
   res <- dharma_residuals(s, fit, plot = FALSE, return_DHARMa = TRUE)
-  png(file.path("figs", paste0("family-qq", tag, "-", nm, ".png")),
+  png(file.path(fig_dir, paste0("family-qq", tag, "-", nm, ".png")),
     width = 5, height = 5, units = "in", res = 150)
   DHARMa::plotQQunif(res, testUniformity = FALSE, testOutliers = FALSE,
     testDispersion = FALSE, main = nm)
@@ -209,7 +209,7 @@ ggplot(fam_index, aes(year, rel_est, colour = family, fill = family)) +
   geom_line() +
   labs(x = "Year", y = "Relative index (geometric mean = 1)") +
   theme_light()
-ggsave(paste0("figs/family-index", tag, ".png"), width = 8, height = 5)
+ggsave(paste0(fig_dir, "/family-index", tag, ".png"), width = 8, height = 5)
 
 fam_trend <- fam_index |>
   group_by(family) |>
@@ -228,5 +228,5 @@ fam_results <- fam_summary |>
   left_join(fam_trend, by = "family") |>
   arrange(dAIC)
 print(fam_results)
-write.csv(fam_results, paste0("output/family-comparison", tag, ".csv"),
+write.csv(fam_results, paste0(out_dir, "/family-comparison", tag, ".csv"),
   row.names = FALSE)

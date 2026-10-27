@@ -26,12 +26,14 @@
 # shift curves up or down without changing their shape). Point estimates only.
 #
 # Usage (from the project root): Rscript R/depth-effects.R
-# Writes figs/depth-effects-<cell_km>km.png and
-# output/diagnostics/depth-effects.csv
+# Writes <species>/figs/depth-effects-<cell_km>km.png and
+# <species>/output/diagnostics/depth-effects.csv
 
 library(dplyr)
 library(ggplot2)
 library(sdmTMB)
+
+source("R/species.R")
 
 mesh_cutoff <- 15
 
@@ -39,7 +41,7 @@ mesh_cutoff <- 15
 
 # The frame is the sampling model's data (one row per eligible cell x year);
 # its depths set the plotting range, the centring, and the polynomial basis.
-prepped <- readRDS("data/cpue-index-clean.rds") # from R/data-prep.R
+prepped <- read_prepped() # from R/data-prep.R
 frame <- prepped$frame
 cell_km <- prepped$settings$cell_km
 
@@ -82,8 +84,7 @@ poly_frame <- predict(depth_poly, frame$log_depth)
 # Returns the three curves for one fit, in long format.
 depth_curves <- function(fit_name) {
   message("Depth effects: ", fit_name)
-  fit <- readRDS(file.path("models",
-    paste0("fit-", fit_name, "-cutoff", mesh_cutoff, ".rds")))
+  fit <- readRDS(find_fit(fit_name, mesh_cutoff))
 
   # 1. Catch model. re_form = NA drops the spatial and spatiotemporal fields
   # and re_form_iid = NA the vessel effects, leaving fixed effects only; the
@@ -156,10 +157,10 @@ ggplot(curves, aes(depth, value, colour = label, linetype = b == 0)) +
   theme_light() +
   theme(legend.position = "bottom") +
   guides(colour = guide_legend(ncol = 2))
-ggsave(paste0("figs/depth-effects-", cell_km, "km.png"), width = 8, height = 10)
+ggsave(paste0(fig_dir, "/depth-effects-", cell_km, "km.png"), width = 8, height = 10)
 
 # Save -------------------------------------------------------------------------
 
 # The curves behind the figure (one row per fit x view x depth grid point)
-write.csv(curves, file.path("output", "diagnostics", "depth-effects.csv"),
+write.csv(curves, file.path(out_dir, "diagnostics", "depth-effects.csv"),
   row.names = FALSE)

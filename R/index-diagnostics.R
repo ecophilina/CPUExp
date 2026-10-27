@@ -17,17 +17,19 @@ library(dplyr)
 library(ggplot2)
 library(sdmTMB)
 
+source("R/species.R")
+
 mesh_cutoff <- 15
 early_years <- 1996:2005
 late_years <- 2016:2025
 min_years_period <- 3 # "regularly fished" in a period = fished in >= this many years
 
-prepped <- readRDS("data/cpue-index-clean.rds") # from R/data-prep.R
+prepped <- read_prepped() # from R/data-prep.R
 d <- prepped$d
 frame <- prepped$frame
 cell_km <- prepped$settings$cell_km
 
-pred_dir <- file.path("output", "diagnostics")
+pred_dir <- file.path(out_dir, "diagnostics")
 dir.create(pred_dir, showWarnings = FALSE)
 
 fits <- tribble(
@@ -47,9 +49,7 @@ predict_frame <- function(fit_name) {
   f <- file.path(pred_dir, paste0("pred-", fit_name, "-cutoff", mesh_cutoff, ".rds"))
   if (file.exists(f)) return(readRDS(f))
   message("Predicting: ", fit_name)
-  fit_dir <- if (grepl("^naive", fit_name)) "output" else "models"
-  fit <- readRDS(file.path(fit_dir,
-    paste0("fit-", fit_name, "-cutoff", mesh_cutoff, ".rds")))
+  fit <- readRDS(find_fit(fit_name, mesh_cutoff))
   p <- predict(fit, newdata = newdata, type = "response", re_form_iid = NA)
   # Delta models: combined expected catch (encounter prob x positive mean)
   est <- if ("est" %in% names(p)) p$est else p$est1 * p$est2
@@ -81,7 +81,7 @@ ggplot(by_status, aes(year, mean_est, colour = model, linetype = status)) +
   labs(x = "Year", y = "Mean predicted density per cell (log scale)",
     colour = NULL, linetype = NULL) +
   theme_light()
-ggsave("figs/diag-fished-unfished-density.png", width = 9, height = 7)
+ggsave(file.path(fig_dir, "diag-fished-unfished-density.png"), width = 9, height = 7)
 
 # Share of each year's index total from unfished cells
 unfished_share <- by_status |>
@@ -97,7 +97,7 @@ ggplot(unfished_share, aes(year, share_unfished, colour = model)) +
   labs(x = "Year", y = "Share of index from unfished cells\n(dashed: share of cells unfished)",
     colour = NULL) +
   theme_light()
-ggsave("figs/diag-unfished-share.png", width = 8, height = 6)
+ggsave(file.path(fig_dir, "diag-unfished-share.png"), width = 8, height = 6)
 
 # Relative indices: all cells vs fished cells only (mean density, since the
 # fished area changes each year)
@@ -121,7 +121,7 @@ ggplot(rel_index, aes(year, rel, colour = model)) +
   labs(x = "Year", y = "Relative mean density (geometric mean = 1)",
     colour = NULL) +
   theme_light()
-ggsave("figs/diag-index-by-cells.png", width = 11, height = 6)
+ggsave(file.path(fig_dir, "diag-index-by-cells.png"), width = 11, height = 6)
 
 trend_by_cells <- rel_index |>
   group_by(family, model, cells) |>
@@ -166,7 +166,7 @@ ggplot(cell_use, aes(X, Y, fill = class)) +
       min(early_years), "-", max(early_years), " vs ",
       min(late_years), "-", max(late_years))) +
   theme_light()
-ggsave("figs/diag-contraction-map.png", width = 8, height = 9)
+ggsave(file.path(fig_dir, "diag-contraction-map.png"), width = 8, height = 9)
 
 # Timing: cells fished per year by region
 frame |>
@@ -176,7 +176,7 @@ frame |>
   geom_line() +
   labs(x = "Year", y = "Frame cells fished", colour = "Region") +
   theme_light()
-ggsave("figs/diag-cells-fished-by-region.png", width = 8, height = 5)
+ggsave(file.path(fig_dir, "diag-cells-fished-by-region.png"), width = 8, height = 5)
 
 # Observed catch rates in dropped vs retained cells during the early period,
 # when both were fished: if the fleet avoided redbanded, dropped cells should
@@ -214,7 +214,7 @@ obs_by_year |>
   labs(x = "Year", y = NULL, colour = NULL,
     title = "Observed redbanded catch in dropped vs retained cells") +
   theme_light()
-ggsave("figs/diag-dropped-vs-retained-observed.png", width = 8, height = 6)
+ggsave(file.path(fig_dir, "diag-dropped-vs-retained-observed.png"), width = 8, height = 6)
 
 write.csv(trend_by_cells, file.path(pred_dir, "trend-by-cells.csv"), row.names = FALSE)
 write.csv(obs_early, file.path(pred_dir, "observed-early-by-class.csv"), row.names = FALSE)

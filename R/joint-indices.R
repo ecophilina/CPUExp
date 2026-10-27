@@ -3,7 +3,8 @@
 # Computes the bias-corrected index for each cached fit over the footprint grid
 # (reference month, unit effort, vessel effects excluded), then compares
 # relative indices and log-linear trends. Indices are cached per fit in
-# output/indices/, so adding a fit to `models` only computes the new one.
+# <species>/output/indices/, so adding a fit to `models` only computes the new
+# one.
 #
 # Usage (from the project root): Rscript R/joint-indices.R
 
@@ -11,17 +12,18 @@ library(dplyr)
 library(ggplot2)
 library(sdmTMB)
 
+source("R/species.R")
 mesh_cutoff <- 15
-prepped <- readRDS("data/cpue-index-clean.rds") # from R/data-prep.R
+prepped <- read_prepped() # from R/data-prep.R
 grid <- prepped$grid
 cell_km <- prepped$settings$cell_km
 
-index_dir <- file.path("output", "indices")
+index_dir <- file.path(out_dir, "indices")
 dir.create(index_dir, showWarnings = FALSE)
 
-# label = fit name (output/ or models/fit-<name>-cutoff<mesh_cutoff>.rds; see
-# fit_path()). Joint fits use their converged (_newton) versions where a
-# Newton step was needed.
+# label = fit name (fit-<name>-cutoff<mesh_cutoff>.rds in <species>/output/ or
+# models/; see find_fit() in R/species.R). Joint fits use their converged
+# (_newton) versions where a Newton step was needed.
 #
 # 6 km frame: all fits are delta-gengamma with the time-varying (rw0) catch
 # intercept; joint fits have the rw sampling baseline and sampling field.
@@ -55,18 +57,18 @@ models <- tribble(
 family_check_file <- function(fit_name) {
   tag <- sub("^naive(_[a-z0-9]+)?-.*$", "\\1", fit_name)
   fam <- sub("^naive(_[a-z0-9]+)?-", "", fit_name)
-  file.path("output", "family-checks",
+  file.path(out_dir, "family-checks",
     paste0("family-checks", tag, "-", fam, "-cutoff", mesh_cutoff, ".rds"))
 }
 
-fit_path <- function(fit_name) {
-  dir <- if (grepl("^naive", fit_name)) "output" else "models"
-  file.path(dir, paste0("fit-", fit_name, "-cutoff", mesh_cutoff, ".rds"))
+fit_path <- function(fit_name) find_fit(fit_name, mesh_cutoff)
+has_fit <- function(fit_name) {
+  !inherits(try(fit_path(fit_name), silent = TRUE), "try-error")
 }
 
 get_cached_index <- function(fit_name) {
   # Use the converged version from R/extra-optimization.R if there is one
-  if (!grepl("_newton$", fit_name) && file.exists(fit_path(paste0(fit_name, "_newton")))) {
+  if (!grepl("_newton$", fit_name) && has_fit(paste0(fit_name, "_newton"))) {
     fit_name <- paste0(fit_name, "_newton")
   }
   f <- file.path(index_dir, paste0("index-", fit_name, "-cutoff", mesh_cutoff, ".rds"))
@@ -123,7 +125,7 @@ ggplot(joint, aes(year, rel_est, colour = label, fill = label)) +
   theme_light() +
   theme(legend.position = "bottom") +
   guides(colour = guide_legend(ncol = 2), fill = guide_legend(ncol = 2))
-ggsave(paste0("figs/index-joint-comparison-", cell_km, "km.png"), width = 9, height = 10)
+ggsave(paste0(fig_dir, "/index-joint-comparison-", cell_km, "km.png"), width = 9, height = 10)
 
 # Log-linear trend: the quantity preferential sampling can bias (the scale is
 # absorbed by catchability in the assessment)
@@ -138,5 +140,5 @@ trends <- indices |>
   arrange(sampling, model_type)
 print(trends, width = Inf)
 
-saveRDS(indices, file.path("output", "index-joint-comparison.rds"))
-write.csv(trends, file.path("output", "index-joint-trends.csv"), row.names = FALSE)
+saveRDS(indices, file.path(out_dir, "index-joint-comparison.rds"))
+write.csv(trends, file.path(out_dir, "index-joint-trends.csv"), row.names = FALSE)

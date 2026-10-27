@@ -22,15 +22,17 @@ library(dplyr)
 library(ggplot2)
 library(sdmTMB)
 
+source("R/species.R")
+
 mesh_cutoff <- 15
 n_depth_bands <- 5
 n_mu_bins <- 10
 
-prepped <- readRDS("data/cpue-index-clean.rds") # from R/data-prep.R
+prepped <- read_prepped() # from R/data-prep.R
 frame <- prepped$frame
 cell_km <- prepped$settings$cell_km
 
-pred_dir <- file.path("output", "diagnostics")
+pred_dir <- file.path(out_dir, "diagnostics")
 dir.create(pred_dir, showWarnings = FALSE)
 
 fit_names <- c(
@@ -47,8 +49,7 @@ predict_log_mu <- function(fit_name, fixed = FALSE) {
   f <- file.path(pred_dir, paste0(tag, fit_name, "-cutoff", mesh_cutoff, ".rds"))
   if (file.exists(f)) return(readRDS(f))
   message("Predicting: ", fit_name, if (fixed) " (fixed effects only)")
-  fit <- readRDS(file.path("models",
-    paste0("fit-", fit_name, "-cutoff", mesh_cutoff, ".rds")))
+  fit <- readRDS(find_fit(fit_name, mesh_cutoff))
   p <- predict(fit, newdata = select(frame, X, Y, year, log_depth, month),
     type = "response", re_form = if (fixed) NA else NULL, re_form_iid = NA,
     offset = rep(0, nrow(frame)))
@@ -90,7 +91,7 @@ ggplot(fr, aes(exp(log_depth), log_mu)) +
   guides(colour = guide_legend(override.aes = list(alpha = 1, size = 2))) +
   labs(x = "Depth (m)", y = "Log expected catch (b = 0 fit)") +
   theme_light()
-ggsave(paste0("figs/negative-b-mu-vs-depth-", cell_km, "km.png"),
+ggsave(paste0(fig_dir, "/negative-b-mu-vs-depth-", cell_km, "km.png"),
   width = 7, height = 5)
 
 # 2. Sampling rate vs expected catch, overall and within depth bands ----------------
@@ -119,7 +120,7 @@ ggplot(rates, aes(log_mu_dev, prop_sampled)) +
     subtitle = paste("Depth bands are quintiles of cell depth (Q1 shallowest);",
       "points are deciles of expected catch within each panel")) +
   theme_light()
-ggsave(paste0("figs/negative-b-sampling-by-depth-", cell_km, "km.png"),
+ggsave(paste0(fig_dir, "/negative-b-sampling-by-depth-", cell_km, "km.png"),
   width = 13, height = 4)
 
 # Slope of logit(sampled) on log expected catch within each depth band
@@ -252,5 +253,5 @@ cells |>
     y = "Cell-mean field contribution\n(log expected catch)") +
   theme_light() +
   theme(legend.position = "bottom")
-ggsave(paste0("figs/negative-b-fields-by-effort-", cell_km, "km.png"),
+ggsave(paste0(fig_dir, "/negative-b-fields-by-effort-", cell_km, "km.png"),
   width = 7, height = 5)
