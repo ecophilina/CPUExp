@@ -42,7 +42,12 @@ models <- tribble(
   "b = 0, official footprint area x pre", "zero_iareafootprint_rwbase_xi_expected_tv_dgengamma",
   "+ footprint", "joint, b = 0",
   "constant b, official footprint area x pre", "iareafootprint_rwbase_xi_expected_tv_dgengamma",
-  "+ footprint", "joint"
+  "+ footprint", "joint",
+  # Depth + port, sampling frame from footprint_year (2013) on only
+  "b = 0, frame 2013+", "zero_rwbase_post2013_xi_expected_tv_dgengamma",
+  "frame 2013+ only", "joint, b = 0",
+  "constant b, frame 2013+", "constant_rwbase_post2013_xi_expected_tv_dgengamma",
+  "frame 2013+ only", "joint"
 )
 
 # Naive indices were already computed by R/family-comparison.R

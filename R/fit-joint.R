@@ -54,6 +54,7 @@ family <- model_families[[nm]]
 if (is.null(family)) family <- delta_gengamma()
 spec <- model_specs[[nm]]
 tv <- exists("model_tv") && nm %in% model_tv
+st <- if (exists("model_ar1") && nm %in% model_ar1) "ar1" else "iid"
 start <- if (start_naive) naive_start(family, tv = tv) else NULL
 cat("Fitting", nm, "| family", paste(family$family, collapse = "/"),
   "| target", spec$target, "| coefficient", spec$coefficient,
@@ -73,9 +74,10 @@ quiet_start <- function(expr) {
 t0 <- Sys.time()
 if (tv) {
   # Time-varying catch models use fit_cpue_tv()
-  cat("  catch model: fit_cpue_tv() (time-varying intercept)\n")
+  cat("  catch model: fit_cpue_tv() (time-varying intercept),",
+    st, "spatiotemporal fields\n")
   fit <- quiet_start(fit_cpue_tv(spec, family = family, multiphase = multiphase,
-    start = start))
+    start = start, spatiotemporal = st))
 } else {
   fit <- quiet_start(fit_cpue(spec, family = family, multiphase = multiphase,
     start = start))

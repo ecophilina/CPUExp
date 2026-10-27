@@ -82,14 +82,11 @@ catch_field_prior <- pc_matern(range_gt = 10, sigma_lt = 5)
 
 # Custom priors on the sampling model (sdmTMBpriors(custom = )), each added
 # only if the model has the parameter:
-# - Preference random-walk SD (pref("rw")): log(sigma_b_pref) ~
-#   N(log(0.3), 0.5), as for log_sigma_b in docs/06_quadrature.R (a penalty
-#   on log sigma, so mode 0.3; no - log(sigma) term). Wider than
-#   lognormal(log(0.1), 0.5), which gave sigma_b_pref ~0.044 and positive
-#   b_t, vs b ~ -0.5 with constant b: lets b_t move further if the data want.
-# - Baseline random-walk SD (baseline = "rw"): lognormal(log(0.1), 0.5), as
-#   for sigma_V in fit_cpue_tv().
-#   Both have zero density at 0, so the SDs can't collapse.
+# - Preference random-walk SD (pref("rw")) and baseline SD (baseline = "rw"
+#   or "iid"): lognormal(log(0.1), 0.5), as for sigma_V in fit_cpue_tv().
+#   Zero density at 0, so the SDs can't collapse. (The docs' wider
+#   log(sigma_b_pref) ~ N(log(0.3), 0.5) only moved sigma_b_pref from 0.044 to
+#   0.058 for rw_rwbase_xi_expected_tv_dgengamma, with b_t still positive.)
 # - Sampling field xi (spatial = "on"): PC Matern, P(range < 10 km) = 0.05,
 #   P(sigma > 10) = 0.05.
 # Adds 0 if none apply (sdmTMB rejects an empty result). The fit stores this
@@ -111,7 +108,7 @@ sampling_priors <- function(par, theta) {
   }
   lp <- 0
   if (!is.null(theta$sigma_b_pref)) {
-    lp <- lp + RTMB::dnorm(log(theta$sigma_b_pref), log(0.3), 0.5, log = TRUE)
+    lp <- lp + lognormal_lpdf(theta$sigma_b_pref, log(0.1), 0.5)
   }
   if (!is.null(theta$sigma_alpha_pref)) {
     lp <- lp + lognormal_lpdf(theta$sigma_alpha_pref, log(0.1), 0.5)
@@ -165,6 +162,7 @@ fit_cpue_tv <- function(preferential = NULL, fit_mesh = mesh,
                        matern_s = catch_field_prior,
                        matern_st = catch_field_prior,
                        custom = sampling_priors),
+                     spatiotemporal = "iid",
                      multiphase = TRUE, start = NULL) {
   sdmTMB(
     catch_formula_tv,
@@ -177,7 +175,7 @@ fit_cpue_tv <- function(preferential = NULL, fit_mesh = mesh,
     family = family,
     offset = d$log_hours,
     spatial = "on",
-    spatiotemporal = "iid",
+    spatiotemporal = spatiotemporal,
     preferential = preferential,
     control = sdmTMBcontrol(backend = "rtmb", multiphase = multiphase,
       start = start),
@@ -426,12 +424,25 @@ model_specs <- list(
     rw_rwbase_xi_expected_tv_dgengamma = pref("rw", spatial = "on", baseline = "rw",
     formula = samp_formula2),
     rw_iareafootprint_rwbase_xi_expected_tv_dgengamma = pref("rw", spatial = "on", baseline = "rw",
-    formula = samp_formula5)
+    formula = samp_formula5),
+  # rw b with an IID baseline (year deviations not smoothed by a random walk)
+    rw_iidbase_xi_expected_tv_dgengamma = pref("rw", spatial = "on", baseline = "iid",
+    formula = samp_formula2),
+  # same with AR(1) spatiotemporal catch fields (naive AR(1) fit: rho ~0.90
+  # encounter, ~0.84 positive; AIC 864 lower than IID)
+    rw_iidbase_xi_expected_tv_ar1_dgengamma = pref("rw", spatial = "on", baseline = "iid",
+    formula = samp_formula2),
+  # footprint-area interaction in the sampling model with AR(1) catch fields
+  # (as rw_iareafootprint_rwbase_xi_expected_tv_dgengamma, which has IID fields)
+    rw_iareafootprint_rwbase_xi_expected_tv_ar1_dgengamma = pref("rw", spatial = "on",
+    baseline = "rw", formula = samp_formula5)
   )
 
 # Models whose catch model is fit_cpue_tv() (time-varying intercept) rather
 # than fit_cpue() (factor(year) effects)
 model_tv <- grep("_tv_", names(model_specs), value = TRUE)
+# ... and those with AR(1) spatiotemporal fields (fit_cpue_tv() only)
+model_ar1 <- grep("_ar1_", model_tv, value = TRUE)
 
 # # Observation family per model (delta_gamma() if not listed)
 model_families <- list(
