@@ -54,4 +54,4 @@ rsconnect/
 *.png
 
 # Run logs
-output/logs/
+*/output/logs/
