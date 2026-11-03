@@ -22,7 +22,9 @@
 # variant: "year" (default; fit_cpue(), factor(year) effects), "tv"
 #   (fit_cpue_tv(), random-walk time-varying intercept), "tv_iid" (same model
 #   as "tv"; refit with the current fit_cpue_tv() priors, as "tv" fits predate
-#   them), or "tv_ar1" (as "tv_iid" with AR(1) spatiotemporal fields). Files
+#   them), "tv_ar1" (as "tv_iid" with AR(1) spatiotemporal fields), or
+#   "tv_ar1_target" (as "tv_ar1" with target_vessel in the catch model,
+#   catch_formula_tv_target, matching the target-vessel joint fits). Files
 #   are tagged with the variant (e.g.
 #   <species>/output/fit-naive_tv-delta_gamma-cutoff15.rds).
 # family: fit only this family and stop (to run families as parallel
@@ -31,7 +33,7 @@
 args <- commandArgs(trailingOnly = TRUE)
 variant <- if (length(args) >= 1) args[1] else "year"
 fit_only <- if (length(args) >= 2) args[2] else NA
-stopifnot(variant %in% c("year", "tv", "tv_iid", "tv_ar1"))
+stopifnot(variant %in% c("year", "tv", "tv_iid", "tv_ar1", "tv_ar1_target"))
 tag <- if (variant == "year") "" else paste0("_", variant)
 
 # Setup from the main script ---------------------------------------------------
@@ -50,7 +52,9 @@ for (i in seq_len(stop_at - 1)) eval(ex[[i]], globalenv())
 mesh <- build_mesh(mesh_cutoff)
 fit_fun <- switch(variant, year = fit_cpue, tv = fit_cpue_tv,
   tv_iid = fit_cpue_tv,
-  tv_ar1 = function(...) fit_cpue_tv(..., spatiotemporal = "ar1"))
+  tv_ar1 = function(...) fit_cpue_tv(..., spatiotemporal = "ar1"),
+  tv_ar1_target = function(...) fit_cpue_tv(..., spatiotemporal = "ar1",
+    catch_formula = catch_formula_tv_target))
 n_sim <- 100 # simulated datasets per family for residual checks
 # FALSE: compare only families with cached fits (e.g., while others are still
 # fitting elsewhere); rerun later to add them. Per-family checks are cached, so

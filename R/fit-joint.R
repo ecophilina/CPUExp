@@ -76,8 +76,11 @@ if (tv) {
   # Time-varying catch models use fit_cpue_tv()
   cat("  catch model: fit_cpue_tv() (time-varying intercept),",
     st, "spatiotemporal fields\n")
+  catch_formula <- model_catch_formulas[[nm]]
+  if (is.null(catch_formula)) catch_formula <- catch_formula_tv
+  cat("  catch formula:", deparse1(catch_formula), "\n")
   fit <- quiet_start(fit_cpue_tv(spec, family = family, multiphase = multiphase,
-    start = start, spatiotemporal = st))
+    start = start, spatiotemporal = st, catch_formula = catch_formula))
 } else {
   fit <- quiet_start(fit_cpue(spec, family = family, multiphase = multiphase,
     start = start))
