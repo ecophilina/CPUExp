@@ -26,8 +26,12 @@ rm(dir)
 message("Species: ", species)
 
 # Cleaned data from R/data-prep.R, checked against the species setting
-read_prepped <- function(file = file.path(data_dir, "cpue-index-clean.rds")) {
+# CPUE_DATA names another prepped file in data_dir (e.g. an archived version,
+# cpue-index-clean-5yr-fleet.rds), to refit or index models on older data
+read_prepped <- function(file = file.path(data_dir,
+                           Sys.getenv("CPUE_DATA", "cpue-index-clean.rds"))) {
   if (!file.exists(file)) stop(file, " not found: run R/data-prep.R for ", species)
+  if (basename(file) != "cpue-index-clean.rds") message("Using prepped data: ", file)
   prepped <- readRDS(file)
   if (!identical(tolower(prepped$settings$species), species)) {
     stop(file, " is for ", prepped$settings$species, ", not ", species)
@@ -56,4 +60,14 @@ find_fit <- function(name, cutoff) {
       })
   }
   hits
+}
+
+# Index grid for a fit: the grid cells inside the fit's sampling frame, so the
+# index covers the area the model describes. Naive fits (no sampling frame)
+# keep the full grid, which is the base frame from R/data-prep.R. Trimmed by
+# cell only, so a year-restricted frame (e.g. 2013+) keeps every year.
+index_grid <- function(fit, grid) {
+  frame <- fit$preferential$spec$data
+  if (is.null(frame)) return(grid)
+  dplyr::semi_join(grid, dplyr::distinct(frame, X, Y), by = c("X", "Y"))
 }

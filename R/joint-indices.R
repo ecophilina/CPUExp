@@ -1,6 +1,6 @@
 # Index comparison: naive vs joint preferential-sampling fits
 #
-# Computes the bias-corrected index for each cached fit over the footprint grid
+# Computes the bias-corrected index for each cached fit over its frame's grid cells
 # (reference month, unit effort, vessel effects excluded), then compares
 # relative indices and log-linear trends. Indices are cached per fit in
 # <species>/output/indices/, so adding a fit to `models` only computes the new
@@ -82,7 +82,7 @@ get_cached_index <- function(fit_name) {
     if (!isTRUE(sanity(fit, silent = TRUE)$all_ok)) {
       warning(fit_name, " does not pass sanity()")
     }
-    idx <- get_index(fit, newdata = grid, area = cell_km^2,
+    idx <- get_index(fit, newdata = index_grid(fit, grid), area = cell_km^2,
       bias_correct = TRUE, # keep TRUE for joint delta models (see docs)
       predict_args = list(re_form_iid = NA))
   }
