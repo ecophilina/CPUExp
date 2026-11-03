@@ -149,6 +149,10 @@ fit_cpue <- function(preferential = NULL, fit_mesh = mesh,
 # made the model unidentifiable (non-positive-definite Hessians).
 catch_formula_tv <- catch_kg ~ 1 + s(log_depth, k = 5) +
   month + (1 | vessel)
+# ... plus a target-vessel catchability effect (vessels landing a substantial
+# share of the species; R/data-prep.R)
+catch_formula_tv_target <- catch_kg ~ 1 + s(log_depth, k = 5) +
+  month + target_vessel + (1 | vessel)
 
 # The lognormal prior on the random-walk SD has zero density at sigma_V = 0,
 # so it keeps the time-varying SD from collapsing. Lognormal rather than
@@ -163,9 +167,10 @@ fit_cpue_tv <- function(preferential = NULL, fit_mesh = mesh,
                        matern_st = catch_field_prior,
                        custom = sampling_priors),
                      spatiotemporal = "iid",
+                     catch_formula = catch_formula_tv,
                      multiphase = TRUE, start = NULL) {
   sdmTMB(
-    catch_formula_tv,
+    catch_formula,
     data = d,
     mesh = fit_mesh,
     time = "year",
@@ -301,6 +306,15 @@ samp_formula4 <- sampled ~ 1 + footprint*pre_footprint + log_dist_port + poly(lo
 # it (R/data-prep.R). Unlike the data-driven footprint, cells outside it were
 # still fished from footprint_year on, so the interaction has no separation.
 samp_formula5 <- sampled ~ 1 + footprint_area*pre_footprint + log_dist_port + poly(log_depth, 2)
+# ... main effects only (the interaction was small and not always significant
+# for redbanded)
+samp_formula6 <- sampled ~ 1 + footprint_area + pre_footprint + log_dist_port + poly(log_depth, 2)
+# Response = cell-year fished by a target vessel (sampled_target, R/data-prep.R),
+# so b describes where the vessels focused on the species choose to fish
+samp_formula2_target <- sampled_target ~ 1 + log_dist_port + poly(log_depth, 2)
+# ... with a cubic in depth: the fleet fishes shallower than the catch depth
+# peak, and a quadratic may leave that to b x catch depth (R/depth-effects.R)
+samp_formula3_target <- sampled_target ~ 1 + log_dist_port + poly(log_depth, 3)
 
 # Sensitivity: allow the regional distribution of effort to shift by year
 # (unmodelled shifts get attributed to b; see docs). Watch for separation
@@ -324,6 +338,12 @@ frame_drop_closed <- filter(frame,
 frame_pre <- filter(frame, year < footprint_year)
 # 3. Frame from the footprint freeze on only
 frame_post <- filter(frame, year >= footprint_year)
+# 4. Cells that overlap the official footprint polygon at all, in every year
+#    (partial cells keep footprint_area < 1, so samp_formula5 is estimable)
+frame_fp <- filter(frame, footprint_area > 0)
+# 5. Cells at least 80% inside the official footprint, in every year (core
+#    footprint; too little spread in footprint_area left to model it)
+frame_fp80 <- filter(frame, footprint_area >= 0.8)
 
 pref <- function(coefficient = "constant", spatial = "on",
                  target = "expected", # changed to expected after Oct 20
@@ -352,6 +372,12 @@ pref <- function(coefficient = "constant", spatial = "on",
 # frame, formula, and field) for a likelihood-ratio test of b. Fit these in
 # parallel with R/run-joint-fits.sh (via R/fit-joint.R); this script then loads
 # the cached fits.
+# Target-vessel specs need sampled_target, which older prepped data lacks
+# (CPUE_DATA, R/species.R); there they are NULL so other models still build
+pref_target <- function(...) {
+  if ("sampled_target" %in% names(frame)) pref(...) else NULL
+}
+
 model_specs <- list(
   # constant_xi_expected_dgamma = pref("constant", spatial = "on"),
   # zero_xi_expected_dgamma = pref("zero", spatial = "on"),
@@ -422,6 +448,9 @@ model_specs <- list(
   # rw b with an IID baseline (year deviations not smoothed by a random walk)
     rw_iidbase_xi_expected_tv_dgengamma = pref("rw", spatial = "on", baseline = "iid",
     formula = samp_formula2),
+  # ... and with constant b
+    constant_iidbase_xi_expected_tv_dgengamma = pref("constant", spatial = "on",
+    baseline = "iid", formula = samp_formula2),
   # same with AR(1) spatiotemporal catch fields (naive AR(1) fit: rho ~0.90
   # encounter, ~0.84 positive; AIC 864 lower than IID)
     rw_iidbase_xi_expected_tv_ar1_dgengamma = pref("rw", spatial = "on", baseline = "iid",
@@ -429,7 +458,50 @@ model_specs <- list(
   # footprint-area interaction in the sampling model with AR(1) catch fields
   # (as rw_iareafootprint_rwbase_xi_expected_tv_dgengamma, which has IID fields)
     rw_iareafootprint_rwbase_xi_expected_tv_ar1_dgengamma = pref("rw", spatial = "on",
-    baseline = "rw", formula = samp_formula5)
+    baseline = "rw", formula = samp_formula5),
+  # The three IID-baseline models above with the frame trimmed to the official
+  # footprint (frame_fp) and footprint area in the sampling model: constant b
+  # with the area x pre-footprint interaction, rw b with main effects only
+    constant_iareafootprint_iidbase_fpframe_xi_expected_tv_dgengamma = pref("constant",
+    spatial = "on", baseline = "iid", formula = samp_formula5, data = frame_fp),
+    rw_areafootprint_iidbase_fpframe_xi_expected_tv_dgengamma = pref("rw",
+    spatial = "on", baseline = "iid", formula = samp_formula6, data = frame_fp),
+    rw_areafootprint_iidbase_fpframe_xi_expected_tv_ar1_dgengamma = pref("rw",
+    spatial = "on", baseline = "iid", formula = samp_formula6, data = frame_fp),
+  # IID-baseline models with the frame trimmed to the core footprint
+  # (frame_fp80) and the full-frame sampling covariates (depth + port)
+    constant_iidbase_fp80frame_xi_expected_tv_dgengamma = pref("constant",
+    spatial = "on", baseline = "iid", formula = samp_formula2, data = frame_fp80),
+    rw_iidbase_fp80frame_xi_expected_tv_dgengamma = pref("rw",
+    spatial = "on", baseline = "iid", formula = samp_formula2, data = frame_fp80),
+    rw_iidbase_fp80frame_xi_expected_tv_ar1_dgengamma = pref("rw",
+    spatial = "on", baseline = "iid", formula = samp_formula2, data = frame_fp80),
+    constant_iidbase_fp80frame_xi_expected_tv_ar1_dgengamma = pref("constant",
+    spatial = "on", baseline = "iid", formula = samp_formula2, data = frame_fp80),
+  # ... with target = "fields"; fit on the old (5-yr fleet) data like the
+  # models above: CPUE_DATA=cpue-index-clean-5yr-fleet.rds (R/species.R)
+    constant_iidbase_fp80frame_xi_fields_tv_ar1_dgengamma = pref("constant",
+    spatial = "on", baseline = "iid", target = "fields", formula = samp_formula2,
+    data = frame_fp80),
+    rw_iidbase_fp80frame_xi_fields_tv_ar1_dgengamma = pref("rw",
+    spatial = "on", baseline = "iid", target = "fields", formula = samp_formula2,
+    data = frame_fp80),
+    constant_iidbase_fp80frame_xi_fields_tv_dgengamma = pref("constant",
+    spatial = "on", baseline = "iid", target = "fields", formula = samp_formula2,
+    data = frame_fp80),
+  # ... with target vessels: target_vessel in the catch model
+  # (model_catch_formulas) and sampled_target as the sampling response
+    constant_iidbase_fp80frame_target_xi_expected_tv_ar1_dgengamma = pref_target("constant",
+    spatial = "on", baseline = "iid", formula = samp_formula2_target, data = frame_fp80),
+    constant_iidbase_fp80frame_target_xi_fields_tv_ar1_dgengamma = pref_target("constant",
+    spatial = "on", baseline = "iid", target = "fields", formula = samp_formula2_target,
+    data = frame_fp80),
+  # ... with cubic depth in the sampling model (d3), then also target = "fields"
+    constant_iidbase_fp80frame_target_d3_xi_expected_tv_ar1_dgengamma = pref_target("constant",
+    spatial = "on", baseline = "iid", formula = samp_formula3_target, data = frame_fp80),
+    constant_iidbase_fp80frame_target_d3_xi_fields_tv_ar1_dgengamma = pref_target("constant",
+    spatial = "on", baseline = "iid", target = "fields", formula = samp_formula3_target,
+    data = frame_fp80)
   )
 
 # Models whose catch model is fit_cpue_tv() (time-varying intercept) rather
@@ -437,6 +509,14 @@ model_specs <- list(
 model_tv <- grep("_tv_", names(model_specs), value = TRUE)
 # ... and those with AR(1) spatiotemporal fields (fit_cpue_tv() only)
 model_ar1 <- grep("_ar1_", model_tv, value = TRUE)
+
+# Catch formula per fit_cpue_tv() model (catch_formula_tv if not listed)
+model_catch_formulas <- list(
+  constant_iidbase_fp80frame_target_xi_expected_tv_ar1_dgengamma = catch_formula_tv_target,
+  constant_iidbase_fp80frame_target_xi_fields_tv_ar1_dgengamma = catch_formula_tv_target,
+  constant_iidbase_fp80frame_target_d3_xi_expected_tv_ar1_dgengamma = catch_formula_tv_target,
+  constant_iidbase_fp80frame_target_d3_xi_fields_tv_ar1_dgengamma = catch_formula_tv_target
+)
 
 # # Observation family per model (delta_gamma() if not listed)
 model_families <- list(

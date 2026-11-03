@@ -22,8 +22,14 @@ utm_crs <- 32609 # UTM zone 9N
 cell_km <- 6 # sampling-frame cell size; b and gamma depend on this choice
 min_yrs_cell <- 3 # eligible cell = fished by the fleet in >= this many years
 min_positive_trips <- 5 # fleet definition (as in gfplot::tidy_cpue_index())
-min_yrs_with_trips <- 5
+min_yrs_with_trips <- 1
 max_hours <- 10 # drop implausible tow durations
+# Target vessel: mean over its years of (vessel's landings / mean landings per
+# vessel that year) >= target_vessel_rel_share, landing the species in >=
+# target_vessel_min_yrs years. Relative to each year's fleet, so neither
+# high-landing years nor the shrinking fleet favour some vessels.
+target_vessel_rel_share <- 1 # 1 = an average-sized vessel for its years
+target_vessel_min_yrs <- 3
 depth_quantiles <- c(0.01, 0.99) # trim depth range using positive tows
 majors <- formatC(3:9, width = 2, flag = "0") # 3C, 3D, 5A, 5B, 5C, 5D, 5E (GFFOS major stat area codes)
 
@@ -178,6 +184,19 @@ bin_year |>
   theme(axis.text.x = element_text(angle = 90, vjust = 0.5))
 ggsave(file.path(fig_dir, "explore-cpue-spread.png"), width = 10, height = 5)
 
+# Tow duration (the log_hours offset), 10-minute bins; dashed line = median
+ggplot(d, aes(hours)) +
+  geom_histogram(binwidth = 1 / 6, boundary = 0, fill = "#0072B2",
+    colour = "white", linewidth = 0.1) +
+  geom_vline(xintercept = median(d$hours), linetype = 2) +
+  scale_x_continuous(breaks = 0:max_hours) +
+  scale_y_continuous(labels = scales::comma) +
+  labs(x = "Hours fished per tow", y = "Tows",
+    subtitle = paste0(scales::comma(nrow(d)), " tows; median ",
+      round(median(d$hours), 2), " h")) +
+  theme_light()
+ggsave(file.path(fig_dir, "explore-hours-histogram.png"), width = 8, height = 5)
+
 # Annual summaries: effort, footprint, encounter rate, and raw catch rates
 d_explore |>
   group_by(year) |>
@@ -264,9 +283,39 @@ ref_month <- as.integer(names(which.max(table(d$month))))
 d$month <- factor(d$month)
 d$vessel <- factor(d$vessel)
 
+# Target vessels (see target_vessel_rel_share above), from the species'
+# groundfish trawl landings over the CPUE years in the gfdata get_catch()
+# extract (<species>/data/*-catch-data.rds). target_vessel (0/1) is a catchability
+# covariate for the catch model; sampled_target = cell-year fished by a target
+# vessel, an alternative sampling response. Skipped if there is no extract.
+catch_file <- list.files(data_dir, "-catch-data[.]rds$", full.names = TRUE)
+target_vessels <- NULL
+if (length(catch_file) == 1) {
+  target_vessels <- readRDS(catch_file) |>
+    filter(year %in% years, fishery_sector == "GROUNDFISH TRAWL",
+      !is.na(vessel_registration_number)) |>
+    filter(landed_kg > 0) |>
+    group_by(year, vessel = vessel_registration_number) |>
+    summarise(landed_kg = sum(landed_kg), .groups = "drop_last") |>
+    mutate(rel_share = landed_kg / mean(landed_kg)) |> # within year
+    group_by(vessel) |>
+    summarise(rel_share = mean(rel_share), n_years = n(), .groups = "drop") |>
+    filter(rel_share >= target_vessel_rel_share,
+      n_years >= target_vessel_min_yrs) |>
+    pull(vessel)
+  d$target_vessel <- as.integer(as.character(d$vessel) %in% target_vessels)
+  message(length(target_vessels), " target vessels; ",
+    sum(levels(d$vessel) %in% target_vessels), " of ", nlevels(d$vessel),
+    " CPUE vessels, ", round(100 * mean(d$target_vessel), 1), "% of tows")
+} else {
+  message("No *-catch-data.rds in ", data_dir, ": no target_vessel variable")
+}
+
 sampled_cy <- d |>
-  distinct(cell_X, cell_Y, year) |>
-  mutate(sampled = 1L)
+  group_by(cell_X, cell_Y, year) |>
+  summarise(sampled = 1L,
+    sampled_target = if (is.null(target_vessels)) NA_integer_ else max(target_vessel),
+    .groups = "drop")
 
 frame <- cells |>
   select(cell_X, cell_Y, log_depth, log_dist_port, region) |>
@@ -274,6 +323,7 @@ frame <- cells |>
   left_join(sampled_cy, by = c("cell_X", "cell_Y", "year")) |>
   mutate(
     sampled = coalesce(sampled, 0L),
+    sampled_target = coalesce(sampled_target, 0L),
     # Catchability covariates held at reference values on the frame:
     month = factor(ref_month, levels = levels(d$month))
   ) |>
@@ -390,9 +440,17 @@ frame |>
   print(n = Inf)
 
 # Index grid: frame cells, reference month, unit effort (offset 0). Used for
-# the mesh sensitivity and the final indices.
+# the mesh sensitivity and the final indices; joint fits on a trimmed frame
+# use only its cells (index_grid() in R/species.R).
 grid <- frame |>
   select(X, Y, year, log_depth, month)
+# Catchability covariate at its reference value (non-target vessel)
+if (!is.null(target_vessels)) {
+  frame$target_vessel <- 0L
+  grid$target_vessel <- 0L
+} else {
+  frame$sampled_target <- NULL
+}
 
 # Save -------------------------------------------------------------------------
 
@@ -406,11 +464,14 @@ saveRDS(
     xy_offset = xy_offset, # add back to X/Y for true UTM km
     depth_range = depth_range,
     fleet_vessels = fleet_vessels,
+    target_vessels = target_vessels,
     settings = list(
       species = species, final_year = final_year, utm_crs = utm_crs,
       cell_km = cell_km, min_yrs_cell = min_yrs_cell,
       min_positive_trips = min_positive_trips,
       min_yrs_with_trips = min_yrs_with_trips, max_hours = max_hours,
+      target_vessel_rel_share = target_vessel_rel_share,
+      target_vessel_min_yrs = target_vessel_min_yrs,
       depth_quantiles = depth_quantiles, majors = majors, ports = ports,
       footprint_year = footprint_year, footprint_file = footprint_file
     ),
