@@ -496,6 +496,16 @@ model_specs <- list(
     constant_iidbase_fp80frame_target_xi_fields_tv_ar1_dgengamma = pref_target("constant",
     spatial = "on", baseline = "iid", target = "fields", formula = samp_formula2_target,
     data = frame_fp80),
+  # ... all-vessel sampling response (sampled) with the target-vessel catch
+  # model: isolates the effect of the sampled_target response
+    constant_iidbase_fp80frame_allves_xi_expected_tv_ar1_dgengamma = pref_target("constant",
+    spatial = "on", baseline = "iid", formula = samp_formula2, data = frame_fp80),
+  # ... same with IID spatiotemporal catch fields
+    constant_iidbase_fp80frame_target_xi_expected_tv_dgengamma = pref_target("constant",
+    spatial = "on", baseline = "iid", formula = samp_formula2_target, data = frame_fp80),
+    constant_iidbase_fp80frame_target_xi_fields_tv_dgengamma = pref_target("constant",
+    spatial = "on", baseline = "iid", target = "fields", formula = samp_formula2_target,
+    data = frame_fp80),
   # ... with cubic depth in the sampling model (d3), then also target = "fields"
     constant_iidbase_fp80frame_target_d3_xi_expected_tv_ar1_dgengamma = pref_target("constant",
     spatial = "on", baseline = "iid", formula = samp_formula3_target, data = frame_fp80),
@@ -514,6 +524,9 @@ model_ar1 <- grep("_ar1_", model_tv, value = TRUE)
 model_catch_formulas <- list(
   constant_iidbase_fp80frame_target_xi_expected_tv_ar1_dgengamma = catch_formula_tv_target,
   constant_iidbase_fp80frame_target_xi_fields_tv_ar1_dgengamma = catch_formula_tv_target,
+  constant_iidbase_fp80frame_allves_xi_expected_tv_ar1_dgengamma = catch_formula_tv_target,
+  constant_iidbase_fp80frame_target_xi_expected_tv_dgengamma = catch_formula_tv_target,
+  constant_iidbase_fp80frame_target_xi_fields_tv_dgengamma = catch_formula_tv_target,
   constant_iidbase_fp80frame_target_d3_xi_expected_tv_ar1_dgengamma = catch_formula_tv_target,
   constant_iidbase_fp80frame_target_d3_xi_fields_tv_ar1_dgengamma = catch_formula_tv_target
 )

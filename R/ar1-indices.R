@@ -43,8 +43,11 @@ models <- tribble(
   "joint, constant b, IID baseline, core footprint frame, b on fields", "constant_iidbase_fp80frame_xi_fields_tv_ar1_dgengamma", "AR(1)",
   "joint, constant b, IID baseline, core footprint frame, b on fields", "constant_iidbase_fp80frame_xi_fields_tv_dgengamma", "IID",
   "joint, rw b, IID baseline, core footprint frame, b on fields", "rw_iidbase_fp80frame_xi_fields_tv_ar1_dgengamma", "AR(1)",
-  "joint, constant b, IID baseline, core footprint frame, target vessels", "constant_iidbase_fp80frame_target_xi_expected_tv_ar1_dgengamma", "AR(1)",
-  "joint, constant b, IID baseline, core footprint frame, target vessels, b on fields", "constant_iidbase_fp80frame_target_xi_fields_tv_ar1_dgengamma", "AR(1)",
+  "joint, constant b, IID baseline, core footprint frame, target-vessel sampling", "constant_iidbase_fp80frame_target_xi_expected_tv_ar1_dgengamma", "AR(1)",
+  "joint, constant b, IID baseline, core footprint frame, target-vessel sampling, b on fields", "constant_iidbase_fp80frame_target_xi_fields_tv_ar1_dgengamma", "AR(1)",
+  "joint, constant b, IID baseline, core footprint frame, all-vessel sampling", "constant_iidbase_fp80frame_allves_xi_expected_tv_ar1_dgengamma", "AR(1)",
+  "joint, constant b, IID baseline, core footprint frame, target-vessel sampling", "constant_iidbase_fp80frame_target_xi_expected_tv_dgengamma", "IID",
+  "joint, constant b, IID baseline, core footprint frame, target-vessel sampling, b on fields", "constant_iidbase_fp80frame_target_xi_fields_tv_dgengamma", "IID",
   "joint, rw b, rw baseline, area x footprint", "rw_iareafootprint_rwbase_xi_expected_tv_dgengamma", "IID",
   "joint, rw b, rw baseline, area x footprint", "rw_iareafootprint_rwbase_xi_expected_tv_ar1_dgengamma", "AR(1)"
 )
@@ -75,7 +78,37 @@ models <- bind_rows(models, tibble(
   # catch model of the target-vessel joint fits (target_vessel effect), on the
   # current data; compare with those fits
   label = "naive, core footprint grid, target vessels",
-  fit = "naive_tv_ar1_target-delta_gengamma", fields = "AR(1)", index_frame = "fp80"
+  fit = c("naive_tv_iid_target-delta_gengamma", "naive_tv_ar1_target-delta_gengamma"),
+  fields = c("IID", "AR(1)"), index_frame = "fp80"
+), tibble(
+  # old-data catch model (no target_vessel) on the current data: separates the
+  # data change from the target_vessel term
+  label = "naive, core footprint grid, current data, no target_vessel",
+  fit = "naive_tv_ar1_current-delta_gengamma", fields = "AR(1)", index_frame = "fp80"
+), tibble(
+  # target-vessel joint fit on the min-3-year fleet data
+  # (CPUE_DATA=cpue-index-clean-min3yr.rds, saved with --out under this name)
+  label = "joint, constant b, IID baseline, core footprint frame, target-vessel sampling, min 3 yr fleet",
+  fit = "constant_iidbase_fp80frame_target_xi_expected_tv_ar1_dgengamma-min3yr",
+  fields = "AR(1)", index_frame = "fp80"
+), tibble(
+  label = "naive, core footprint grid, target vessels, min 3 yr fleet",
+  fit = "naive_tv_ar1_target_min3yr-delta_gengamma", fields = "AR(1)", index_frame = "fp80"
+), tibble(
+  # old-data naive model refitted with the current code on the min-5-year data
+  # (same tows as the old data)
+  label = "naive, core footprint grid, min 5 yr fleet, current code",
+  fit = "naive_tv_ar1_min5yr-delta_gengamma", fields = "AR(1)", index_frame = "fp80"
+), tibble(
+  label = "naive, core footprint grid, min 3 yr fleet, no target_vessel",
+  fit = "naive_tv_ar1_min3yr-delta_gengamma", fields = "AR(1)", index_frame = "fp80"
+), tibble(
+  label = "naive, core footprint grid, target vessels, min 5 yr fleet",
+  fit = "naive_tv_ar1_target_min5yr-delta_gengamma", fields = "AR(1)", index_frame = "fp80"
+), tibble(
+  label = "joint, constant b, IID baseline, core footprint frame, target-vessel sampling, min 5 yr fleet",
+  fit = "constant_iidbase_fp80frame_target_xi_expected_tv_ar1_dgengamma-min5yr",
+  fields = "AR(1)", index_frame = "fp80"
 )) |>
   mutate(key = ifelse(is.na(index_frame), fit, paste0(fit, "-", index_frame)))
 
@@ -168,7 +201,10 @@ ggsave(paste0(fig_dir, "/index-ar1-comparison-", cell_km, "km.png"), width = 9,
 model_cols <- c("#000000", "#0072B2", "#D55E00", "#009E73", "#CC79A7",
   "#E69F00", "#56B4E9", "#999999", "#882255", "#44AA99", "#AA4499",
   "#332288", "#DDCC77", "#661100")
-stopifnot(length(levels(indices$label)) <= length(model_cols))
+# more models than colours: extend with extra hues (these overview plots get
+# crowded; the fleet comparisons have their own plot below)
+n_extra <- length(levels(indices$label)) - length(model_cols)
+if (n_extra > 0) model_cols <- c(model_cols, hcl.colors(n_extra, "Dark 3"))
 model_cols <- setNames(model_cols[seq_along(levels(indices$label))],
   levels(indices$label))
 ggplot(indices, aes(year, rel_est, colour = label, fill = label)) +
@@ -216,7 +252,7 @@ if (nrow(core)) {
 # Core footprint: b on expected catch vs b on the catch fields, against the
 # matching naive fit. Panels: old (5-yr fleet) data with IID and with AR(1)
 # catch fields; current data with target vessels (target_vessel in the catch
-# model, sampled_target response), AR(1) catch fields. All quadratic sampling
+# model, sampled_target response), IID and AR(1) catch fields. All quadratic sampling
 # depth.
 target_keys <- tribble(
   ~panel, ~model, ~key,
@@ -226,9 +262,13 @@ target_keys <- tribble(
   "Old data (5-yr fleet), AR(1) catch fields", "naive", "naive_tv_ar1-delta_gengamma-fp80",
   "Old data (5-yr fleet), AR(1) catch fields", "joint, b on expected catch", "constant_iidbase_fp80frame_xi_expected_tv_ar1_dgengamma-fp80",
   "Old data (5-yr fleet), AR(1) catch fields", "joint, b on catch fields", "constant_iidbase_fp80frame_xi_fields_tv_ar1_dgengamma-fp80",
-  "Current data, target vessels, AR(1) catch fields", "naive", "naive_tv_ar1_target-delta_gengamma-fp80",
-  "Current data, target vessels, AR(1) catch fields", "joint, b on expected catch", "constant_iidbase_fp80frame_target_xi_expected_tv_ar1_dgengamma",
-  "Current data, target vessels, AR(1) catch fields", "joint, b on catch fields", "constant_iidbase_fp80frame_target_xi_fields_tv_ar1_dgengamma"
+  "Current data, target-vessel sampling, IID catch fields", "naive", "naive_tv_iid_target-delta_gengamma-fp80",
+  "Current data, target-vessel sampling, IID catch fields", "joint, b on expected catch", "constant_iidbase_fp80frame_target_xi_expected_tv_dgengamma",
+  "Current data, target-vessel sampling, IID catch fields", "joint, b on catch fields", "constant_iidbase_fp80frame_target_xi_fields_tv_dgengamma",
+  "Current data, target-vessel sampling, AR(1) catch fields", "naive", "naive_tv_ar1_target-delta_gengamma-fp80",
+  "Current data, target-vessel sampling, AR(1) catch fields", "joint, b on expected catch", "constant_iidbase_fp80frame_target_xi_expected_tv_ar1_dgengamma",
+  "Current data, target-vessel sampling, AR(1) catch fields", "joint, b on catch fields", "constant_iidbase_fp80frame_target_xi_fields_tv_ar1_dgengamma",
+  "Current data, all-vessel sampling, AR(1) catch fields", "joint, b on expected catch", "constant_iidbase_fp80frame_allves_xi_expected_tv_ar1_dgengamma"
 )
 target_cols <- c("naive" = "#4D4D4D", "joint, b on expected catch" = "#D55E00",
   "joint, b on catch fields" = "#0072B2")
@@ -248,6 +288,7 @@ if (nrow(by_target)) {
         ": preference for expected catch vs catch fields"),
       caption = paste0("Constant b, IID sampling baseline. ",
         "Index over cells >= 80% inside the 2012 trawl footprint (current frame).\n",
+        "Catch models use all tows; current-data ones add a target_vessel catchability effect (index at target_vessel = 0).\n",
         "Ribbons: 95% CI. Delta-gengamma, rw0 catch intercept; ", cell_km, " km grid.")) +
     theme_light() +
     theme(legend.position = "top", legend.justification = "left")
@@ -270,11 +311,137 @@ if (nrow(by_target)) {
         ": preference for expected catch vs catch fields (unscaled)"),
       caption = paste0("Constant b, IID sampling baseline. ",
         "Index over cells >= 80% inside the 2012 trawl footprint (current frame).\n",
+        "Catch models use all tows; current-data ones add a target_vessel catchability effect (index at target_vessel = 0).\n",
         "Ribbons: 95% CI. Delta-gengamma, rw0 catch intercept; ", cell_km, " km grid.")) +
     theme_light() +
     theme(legend.position = "top", legend.justification = "left")
   ggsave(paste0(fig_dir, "/index-target-fields-vs-expected-absolute-", cell_km, "km.png"),
     width = 9, height = 2 + 3 * n_distinct(by_target$panel))
+
+  # Same, one panel per plot: colour = data/fields (fixed per data set across
+  # plots), alpha = model (opaque naive, b on fields fainter, b on expected
+  # faintest). No ribbons (overlapping CIs are unreadable; see the faceted
+  # version). Plots: old vs current data, AR(1) catch fields; current data,
+  # IID vs AR(1) catch fields. Current-data naive fits have no sampling model
+  # (shared by target- and all-vessel sampling), so they get their own colour
+  panel_cols <- c(
+    "Old data (5-yr fleet), IID catch fields" = "#009E73",
+    "Old data (5-yr fleet), AR(1) catch fields" = "#D55E00",
+    "Current data, IID catch fields" = "#999999",
+    "Current data, AR(1) catch fields" = "#4D4D4D",
+    "Current data, target-vessel sampling, IID catch fields" = "#CC79A7",
+    "Current data, target-vessel sampling, AR(1) catch fields" = "#0072B2",
+    "Current data, all-vessel sampling, AR(1) catch fields" = "#E69F00"
+  )
+  model_alpha <- c("naive" = 1, "joint, b on expected catch" = 0.3,
+    "joint, b on catch fields" = 0.6)
+  one_panel_plot <- function(panels, file) {
+    d <- filter(by_target, panel %in% panels) |>
+      mutate(panel = as.character(panel),
+        panel = if_else(model == "naive" & startsWith(panel, "Current data"),
+          sub("target-vessel sampling, ", "", panel), panel),
+        panel = factor(panel, intersect(names(panel_cols), panel)))
+    if (!nrow(d)) return(invisible())
+    ggplot(d, aes(year, est, colour = panel, alpha = model)) +
+      geom_line(linewidth = 0.9) +
+      scale_y_continuous(labels = scales::label_number(scale_cut = scales::cut_short_scale())) +
+      scale_colour_manual(values = panel_cols) +
+      scale_alpha_manual(values = model_alpha) +
+      labs(x = "Year", y = "Index (predicted kg/h x cell area in km², summed over cells)",
+        colour = NULL, alpha = NULL,
+        title = paste0(tools::toTitleCase(species),
+          ": preference for expected catch vs catch fields (unscaled)"),
+        caption = paste0("Constant b, IID sampling baseline. ",
+          "Index over cells >= 80% inside the 2012 trawl footprint (current frame).\n",
+          "Catch models use all tows; current-data ones add a target_vessel catchability effect (index at target_vessel = 0).\n",
+          "Delta-gengamma, rw0 catch intercept; ", cell_km, " km grid.")) +
+      guides(alpha = guide_legend(ncol = 1, order = 1,
+          override.aes = list(colour = "grey20")),
+        colour = guide_legend(ncol = 1, order = 2)) +
+      theme_light() +
+      theme(legend.position = "top", legend.justification = "left",
+        legend.key.width = unit(2.5, "lines"))
+    ggsave(paste0(fig_dir, "/", file, "-", cell_km, "km.png"), width = 9, height = 6.5)
+  }
+  one_panel_plot(c("Current data, target-vessel sampling, IID catch fields",
+    "Current data, target-vessel sampling, AR(1) catch fields"),
+    "index-target-iid-vs-ar1-absolute-1panel")
+
+  # Old vs current data, AR(1) catch fields. Redbanded: replaced by the
+  # colour-only naive vs joint plot below (adds all-vessel sampling); bocaccio
+  # (naive fits only so far) gets its naive panel
+  if (!species %in% c("redbanded rockfish", "bocaccio")) {
+    one_panel_plot(c("Old data (5-yr fleet), AR(1) catch fields",
+      "Current data, target-vessel sampling, AR(1) catch fields"),
+      "index-target-fields-vs-expected-absolute-1panel")
+  } else {
+    # Naive vs joint (b on expected catch), target- vs all-vessel sampling; AR(1)
+    # catch fields. One colour per line, no alpha
+    # Labelled by fleet: vessels with >= 5 positive trips in >= 1, 3 or 5 years
+    # (min_yrs_with_trips; the 5-yr fleet is the old data). The naive 5-yr fit
+    # on the old data equals its refit on the current code
+    # (naive_tv_ar1_min5yr), so only one is drawn (other species: the refit)
+    min5_notv <- if (species == "redbanded rockfish") "naive_tv_ar1-delta_gengamma-fp80" else
+      "naive_tv_ar1_min5yr-delta_gengamma-fp80"
+    sampling_lines <- tribble(
+      ~line, ~key, ~col,
+      "Min 1 yr fleet, naive", "naive_tv_ar1_target-delta_gengamma-fp80", "#4D4D4D",
+      "Min 1 yr fleet, naive, no target_vessel", "naive_tv_ar1_current-delta_gengamma-fp80", "#999999",
+      "Min 3 yr fleet, naive", "naive_tv_ar1_target_min3yr-delta_gengamma-fp80", "#009E73",
+      "Min 3 yr fleet, naive, no target_vessel", "naive_tv_ar1_min3yr-delta_gengamma-fp80", "#7FD1B9",
+      "Min 5 yr fleet, naive", "naive_tv_ar1_target_min5yr-delta_gengamma-fp80", "#B07800",
+      "Min 5 yr fleet, naive, no target_vessel", min5_notv, "#E69F00",
+      "Min 1 yr fleet, joint, target-vessel sampling", "constant_iidbase_fp80frame_target_xi_expected_tv_ar1_dgengamma", "#0072B2",
+      "Min 3 yr fleet, joint, target-vessel sampling", "constant_iidbase_fp80frame_target_xi_expected_tv_ar1_dgengamma-min3yr-fp80", "#56B4E9",
+      "Min 5 yr fleet, joint, target-vessel sampling", "constant_iidbase_fp80frame_target_xi_expected_tv_ar1_dgengamma-min5yr-fp80", "#882255",
+      "Min 1 yr fleet, joint, all-vessel sampling", "constant_iidbase_fp80frame_allves_xi_expected_tv_ar1_dgengamma", "#D55E00"
+    )
+    d <- inner_join(select(sampling_lines, -col), select(indices, key, year, est, rel_est), by = "key") |>
+      mutate(line = factor(line, sampling_lines$line), naive = grepl("naive", line))
+    # Top: naive indices only, solid. Bottom: the same naive indices dotted, with
+    # the joint fits solid
+    panels <- c("Naive", "Naive (dotted) and joint (solid)")
+    d2 <- bind_rows(
+      mutate(filter(d, naive), panel = panels[1], lty = "solid"),
+      mutate(d, panel = panels[2], lty = ifelse(naive, "dotted", "solid"))
+    ) |> mutate(panel = factor(panel, panels))
+    # No joint fits yet (bocaccio): the naive panel only
+    naive_only <- all(d$naive)
+    if (naive_only) d2 <- filter(d2, panel == panels[1])
+    # Unscaled (est) and scaled (rel_est) versions
+    for (scaled in c(FALSE, TRUE)) {
+      v <- if (scaled) "rel_est" else "est"
+      ggplot(d2, aes(year, .data[[v]], colour = line, linetype = lty)) +
+        geom_line(linewidth = 0.9) +
+        facet_wrap(~panel, ncol = 1) +
+        scale_y_continuous(labels = if (scaled) waiver() else
+          scales::label_number(scale_cut = scales::cut_short_scale())) +
+        scale_colour_manual(values = setNames(sampling_lines$col, sampling_lines$line)) +
+        scale_linetype_identity() +
+        labs(x = "Year", y = if (scaled) "Relative index (geometric mean = 1)" else
+          "Index (predicted kg/h x cell area in km², summed over cells)",
+          colour = NULL,
+          title = paste0(tools::toTitleCase(species),
+            if (naive_only) ": naive indices by fleet definition" else
+              ": naive vs joint, target- vs all-vessel sampling",
+            if (scaled) "" else " (unscaled)"),
+          caption = paste0("AR(1) catch fields.",
+            if (!naive_only) " Joint: constant b on expected catch, IID sampling baseline.", " ",
+            "Index over cells >= 80% inside the 2012 trawl footprint (current frame).\n",
+            "Fleet: vessels with >= 5 positive trips in >= 1, 3 or 5 years",
+            if (species == "redbanded rockfish") " (5 yr = old data)", ". Catch models use all fleet tows and a target_vessel\ncatchability effect (index at target_vessel = 0) unless marked. ",
+            "Delta-gengamma, rw0 catch intercept; ", cell_km, " km grid.")) +
+        guides(colour = guide_legend(ncol = 2)) +
+        theme_light() +
+        theme(legend.position = "top", legend.justification = "left",
+          legend.key.width = unit(2.5, "lines"),
+          strip.text = element_text(colour = "grey15", hjust = 0),
+          strip.background = element_rect(fill = "grey92"))
+      ggsave(paste0(fig_dir, "/index-sampling-comparison-",
+        if (scaled) "" else "absolute-", if (naive_only) "1panel-" else "2panel-",
+        cell_km, "km.png"), width = 10, height = if (naive_only) 6.5 else 10)
+    }
+  }
 }
 
 # Log-linear trend: the quantity preferential sampling can bias

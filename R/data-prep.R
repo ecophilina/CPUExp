@@ -13,7 +13,14 @@ library(sdmTMB) # add_utm_columns()
 
 source("R/species.R") # species (CPUE_SPECIES) and its folders
 
-out_file <- file.path(data_dir, "cpue-index-clean.rds")
+# CPUE_DATA (as in read_prepped(), R/species.R) saves an alternative prepped
+# file instead, with its figures in figs/<file name>/
+data_file <- Sys.getenv("CPUE_DATA", "cpue-index-clean.rds")
+out_file <- file.path(data_dir, data_file)
+if (data_file != "cpue-index-clean.rds") {
+  fig_dir <- file.path(fig_dir, sub("[.]rds$", "", data_file))
+  dir.create(fig_dir, showWarnings = FALSE)
+}
 
 # Settings ---------------------------------------------------------------------
 
@@ -22,7 +29,9 @@ utm_crs <- 32609 # UTM zone 9N
 cell_km <- 6 # sampling-frame cell size; b and gamma depend on this choice
 min_yrs_cell <- 3 # eligible cell = fished by the fleet in >= this many years
 min_positive_trips <- 5 # fleet definition (as in gfplot::tidy_cpue_index())
-min_yrs_with_trips <- 1
+# fleet: vessels with that many positive trips in >= this many years
+# (CPUE_MIN_YRS_WITH_TRIPS overrides, e.g. with CPUE_DATA for a variant file)
+min_yrs_with_trips <- as.integer(Sys.getenv("CPUE_MIN_YRS_WITH_TRIPS", 1))
 max_hours <- 10 # drop implausible tow durations
 # Target vessel: mean over its years of (vessel's landings / mean landings per
 # vessel that year) >= target_vessel_rel_share, landing the species in >=
@@ -30,6 +39,15 @@ max_hours <- 10 # drop implausible tow durations
 # high-landing years nor the shrinking fleet favour some vessels.
 target_vessel_rel_share <- 1 # 1 = an average-sized vessel for its years
 target_vessel_min_yrs <- 3
+# Reference month for the sampling frame and index grid (catchability held at
+# that month): "tows" = the month with the most tows; "mean_catch" = the month
+# with the highest mean catch per tow (zeros included). Only scales the index.
+ref_month_rule <- "tows"
+# TRUE: make the reference month the first level of month, so the catch-model
+# intercept (and rw0 intercept) is the reference month rather than January.
+# Same fits, other parameterization; but the level order must match the data a
+# model was fitted to, so switch it only when refitting all models.
+ref_month_baseline <- FALSE
 depth_quantiles <- c(0.01, 0.99) # trim depth range using positive tows
 majors <- formatC(3:9, width = 2, flag = "0") # 3C, 3D, 5A, 5B, 5C, 5D, 5E (GFFOS major stat area codes)
 
@@ -279,8 +297,13 @@ d <- semi_join(d, cells, by = c("cell_X", "cell_Y"))
 years <- sort(unique(d$year))
 stopifnot(all(diff(years) == 1)) # else use extra_time for coefficient = "rw"
 
-ref_month <- as.integer(names(which.max(table(d$month))))
+# Reference month for the frame and index grid (ref_month_rule above)
+ref_month <- as.integer(names(which.max(switch(ref_month_rule,
+  tows = table(d$month),
+  mean_catch = tapply(d$catch_kg, d$month, mean),
+  stop("ref_month_rule must be \"tows\" or \"mean_catch\"")))))
 d$month <- factor(d$month)
+if (ref_month_baseline) d$month <- relevel(d$month, ref = as.character(ref_month))
 d$vessel <- factor(d$vessel)
 
 # Target vessels (see target_vessel_rel_share above), from the species'
@@ -472,6 +495,7 @@ saveRDS(
       min_yrs_with_trips = min_yrs_with_trips, max_hours = max_hours,
       target_vessel_rel_share = target_vessel_rel_share,
       target_vessel_min_yrs = target_vessel_min_yrs,
+      ref_month_rule = ref_month_rule, ref_month_baseline = ref_month_baseline,
       depth_quantiles = depth_quantiles, majors = majors, ports = ports,
       footprint_year = footprint_year, footprint_file = footprint_file
     ),
