@@ -6,7 +6,7 @@
 # <species>/output/indices/, so adding a fit to `models` only computes the new
 # one.
 #
-# Usage (from the project root): Rscript R/joint-indices.R
+# Usage (from the project root): Rscript R/06-joint-indices.R
 
 library(dplyr)
 library(ggplot2)
@@ -14,7 +14,7 @@ library(sdmTMB)
 
 source("R/species.R")
 mesh_cutoff <- 15
-prepped <- read_prepped() # from R/data-prep.R
+prepped <- read_prepped() # from R/01-data-prep.R
 grid <- prepped$grid
 cell_km <- prepped$settings$cell_km
 
@@ -52,7 +52,7 @@ models <- tribble(
   "frame 2013+ only", "joint"
 )
 
-# Naive indices were already computed by R/family-comparison.R
+# Naive indices were already computed by R/03-family-comparison.R
 # (naive-<family> -> family-checks-<family>; naive_tv-<family> -> family-checks_tv-<family>)
 family_check_file <- function(fit_name) {
   tag <- sub("^naive(_[a-z0-9]+)?-.*$", "\\1", fit_name)
@@ -67,7 +67,7 @@ has_fit <- function(fit_name) {
 }
 
 get_cached_index <- function(fit_name) {
-  # Use the converged version from R/extra-optimization.R if there is one
+  # Use the converged version from R/05-extra-optimization.R if there is one
   if (!grepl("_newton$", fit_name) && has_fit(paste0(fit_name, "_newton"))) {
     fit_name <- paste0(fit_name, "_newton")
   }

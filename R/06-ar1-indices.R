@@ -3,13 +3,13 @@
 # Bias-corrected indices for the naive (catch-only) and joint (rw b, IID
 # sampling baseline) fits, each with IID and AR(1) spatiotemporal fields, over
 # the index grid (reference month, unit effort, vessel effects excluded), as in
-# R/joint-indices.R. Indices are cached in <species>/output/indices/ under
-# the same names as R/joint-indices.R uses. Each index covers only the grid
+# R/06-joint-indices.R. Indices are cached in <species>/output/indices/ under
+# the same names as R/06-joint-indices.R uses. Each index covers only the grid
 # cells in its fit's sampling frame (index_grid() in R/species.R).
 #
 # Joint-fit indices rebuild the full model (~20 GB), so compute one per process:
-#   Rscript R/ar1-indices.R <index key>  # compute and cache one index
-#   Rscript R/ar1-indices.R              # compute any missing, then compare
+#   Rscript R/06-ar1-indices.R <index key>  # compute and cache one index
+#   Rscript R/06-ar1-indices.R              # compute any missing, then compare
 
 library(dplyr)
 library(ggplot2)
@@ -17,7 +17,7 @@ library(sdmTMB)
 
 source("R/species.R")
 mesh_cutoff <- 15
-prepped <- read_prepped() # from R/data-prep.R
+prepped <- read_prepped() # from R/01-data-prep.R
 grid <- prepped$grid
 cell_km <- prepped$settings$cell_km
 
@@ -112,7 +112,7 @@ models <- bind_rows(models, tibble(
 )) |>
   mutate(key = ifelse(is.na(index_frame), fit, paste0(fit, "-", index_frame)))
 
-# Cells at least 80% inside the official footprint (frame_fp80 in R/cpue-index.R),
+# Cells at least 80% inside the official footprint (frame_fp80 in R/02-cpue-index.R),
 # always from the current prepped data, even when CPUE_DATA selects older data
 current <- readRDS(file.path(data_dir, "cpue-index-clean.rds"))
 index_grids <- list(

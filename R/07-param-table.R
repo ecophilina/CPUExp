@@ -5,7 +5,7 @@
 # Fits that don't exist yet for the species are skipped.
 #
 # Usage (from the project root):
-#   CPUE_SPECIES="pacific ocean perch" Rscript R/param-table.R
+#   CPUE_SPECIES="pacific ocean perch" Rscript R/07-param-table.R
 # Writes <species>/output/param-table.csv (all terms, long format)
 
 library(dplyr)

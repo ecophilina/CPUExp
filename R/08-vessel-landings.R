@@ -2,10 +2,10 @@
 #
 # Ranks groundfish trawl vessels by landed catch over the CPUE years from a
 # gfdata get_catch() extract in <species>/data/, and flags those in the CPUE
-# data (R/data-prep.R). Writes <species>/output/vessel-landings.csv.
+# data (R/01-data-prep.R). Writes <species>/output/vessel-landings.csv.
 #
 # Usage (from the project root):
-#   CPUE_SPECIES="pacific ocean perch" Rscript R/vessel-landings.R pop-catch-data.rds
+#   CPUE_SPECIES="pacific ocean perch" Rscript R/08-vessel-landings.R pop-catch-data.rds
 
 library(dplyr)
 

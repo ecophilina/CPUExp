@@ -1,9 +1,9 @@
 #!/bin/bash
-# Fit the joint models in `model_specs` (R/cpue-index.R) as parallel R
+# Fit the joint models in `model_specs` (R/02-cpue-index.R) as parallel R
 # processes, in phases of at most two: each joint fit needs ~9 GB of memory.
 #
-# Usage (from the project root): bash R/run-joint-fits.sh
-#   or: CPUE_SPECIES="pacific ocean perch" bash R/run-joint-fits.sh
+# Usage (from the project root): bash R/04-run-joint-fits.sh
+#   or: CPUE_SPECIES="pacific ocean perch" bash R/04-run-joint-fits.sh
 # Logs go to <species>/output/logs/fit-<model>.log. Models with a cached fit
 # are skipped.
 
@@ -13,7 +13,7 @@ logs="$CPUE_SPECIES/output/logs"
 mkdir -p "$logs"
 
 fit() {
-  Rscript R/fit-joint.R "$1" > "$logs/fit-$1.log" 2>&1
+  Rscript R/04-fit-joint.R "$1" > "$logs/fit-$1.log" 2>&1
   local status=$?
   echo "[$(date +%H:%M)] $1 exit $status:$(grep -hE 'FIT DONE|all_ok|Error|already exists' "$logs/fit-$1.log" | tr '\n' ' ')"
 }

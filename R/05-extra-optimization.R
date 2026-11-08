@@ -2,7 +2,7 @@
 # sanity() when the optimizer has otherwise converged.
 #
 # Usage (from the project root):
-#   Rscript R/extra-optimization.R <model name> [mesh cutoff, default 15]
+#   Rscript R/05-extra-optimization.R <model name> [mesh cutoff, default 15]
 # Reads  <dir>/fit-<model>-cutoff<cutoff>.rds
 # Writes <dir>/fit-<model>_newton-cutoff<cutoff>.rds (the original is kept)
 # where <dir> is the fit's folder (find_fit() in R/species.R; species from
@@ -12,7 +12,7 @@
 
 args <- commandArgs(trailingOnly = TRUE)
 nm <- args[1]
-if (is.na(nm)) stop("Usage: Rscript R/extra-optimization.R <model name> [cutoff]")
+if (is.na(nm)) stop("Usage: Rscript R/05-extra-optimization.R <model name> [cutoff]")
 cutoff <- if (length(args) > 1) args[2] else 15
 
 suppressMessages(library(sdmTMB))

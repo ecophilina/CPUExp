@@ -1,6 +1,6 @@
 # Observation-family comparison for the naive (catch-only) CPUE model
 #
-# DRAFT. Fits the naive model from R/cpue-index.R with each family that the
+# DRAFT. Fits the naive model from R/02-cpue-index.R with each family that the
 # joint preferential-sampling model also supports, so the winner can be carried
 # into the joint fits. Candidates are limited to families that can handle
 # catch_kg (continuous, with zeros):
@@ -18,7 +18,7 @@
 # bias-corrected indices.
 #
 # Usage (from the project root):
-#   Rscript R/family-comparison.R [variant] [family]
+#   Rscript R/03-family-comparison.R [variant] [family]
 # variant: "year" (default; fit_cpue(), factor(year) effects), "tv"
 #   (fit_cpue_tv(), random-walk time-varying intercept), "tv_iid" (same model
 #   as "tv"; refit with the current fit_cpue_tv() priors, as "tv" fits predate
@@ -47,10 +47,10 @@ if (alt_data != "cpue-index-clean.rds") {
 
 # Setup from the main script ---------------------------------------------------
 
-# Runs R/cpue-index.R up to (not including) the mesh sensitivity section: loads
-# <species>/data/cpue-index-clean.rds (run R/data-prep.R first) and defines
+# Runs R/02-cpue-index.R up to (not including) the mesh sensitivity section: loads
+# <species>/data/cpue-index-clean.rds (run R/01-data-prep.R first) and defines
 # build_mesh(), the formulas, and fit_cpue() (species setup: R/species.R).
-ex <- parse("R/cpue-index.R", keep.source = FALSE)
+ex <- parse("R/02-cpue-index.R", keep.source = FALSE)
 stop_at <- which(vapply(ex, function(e) {
   is.call(e) && identical(e[[1]], as.name("if")) &&
     identical(e[[2]], as.name("run_mesh_test"))

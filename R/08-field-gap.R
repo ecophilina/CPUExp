@@ -13,7 +13,7 @@
 # minus the same with omega and epsilon set to zero (both delta components).
 #
 # Usage (from the project root; loads two naive fits, not the joint ones):
-#   CPUE_SPECIES="pacific ocean perch" Rscript R/field-gap.R
+#   CPUE_SPECIES="pacific ocean perch" Rscript R/08-field-gap.R
 
 library(dplyr)
 library(ggplot2)

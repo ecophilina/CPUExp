@@ -11,7 +11,7 @@
 #      (model-free evidence for or against avoidance).
 #
 # Predictions are plug-in (no bias correction): fine for shares and trends.
-# Usage (from the project root): Rscript R/index-diagnostics.R
+# Usage (from the project root): Rscript R/08-index-diagnostics.R
 
 library(dplyr)
 library(ggplot2)
@@ -24,7 +24,7 @@ early_years <- 1996:2005
 late_years <- 2016:2025
 min_years_period <- 3 # "regularly fished" in a period = fished in >= this many years
 
-prepped <- read_prepped() # from R/data-prep.R
+prepped <- read_prepped() # from R/01-data-prep.R
 d <- prepped$d
 frame <- prepped$frame
 cell_km <- prepped$settings$cell_km

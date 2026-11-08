@@ -2,10 +2,10 @@
 #
 # The species comes from the CPUE_SPECIES environment variable (default below),
 # so both species can run side by side without editing scripts:
-#   CPUE_SPECIES="pacific ocean perch" Rscript R/fit-joint.R <model name>
+#   CPUE_SPECIES="pacific ocean perch" Rscript R/04-fit-joint.R <model name>
 #
 # Species files live in "<species>/" (the common name, lower case):
-#   data/    cleaned data from R/data-prep.R (cpue-index-clean.rds)
+#   data/    cleaned data from R/01-data-prep.R (cpue-index-clean.rds)
 #   output/  naive fits, indices, tables, logs
 #   models/  joint fits; subfolders hold archived fits (see find_fit())
 #   figs/    figures
@@ -25,12 +25,12 @@ for (dir in c(data_dir, out_dir, model_dir, fig_dir)) {
 rm(dir)
 message("Species: ", species)
 
-# Cleaned data from R/data-prep.R, checked against the species setting
+# Cleaned data from R/01-data-prep.R, checked against the species setting
 # CPUE_DATA names another prepped file in data_dir (e.g. an archived version,
 # cpue-index-clean-5yr-fleet.rds), to refit or index models on older data
 read_prepped <- function(file = file.path(data_dir,
                            Sys.getenv("CPUE_DATA", "cpue-index-clean.rds"))) {
-  if (!file.exists(file)) stop(file, " not found: run R/data-prep.R for ", species)
+  if (!file.exists(file)) stop(file, " not found: run R/01-data-prep.R for ", species)
   if (basename(file) != "cpue-index-clean.rds") message("Using prepped data: ", file)
   prepped <- readRDS(file)
   if (!identical(tolower(prepped$settings$species), species)) {
@@ -64,7 +64,7 @@ find_fit <- function(name, cutoff) {
 
 # Index grid for a fit: the grid cells inside the fit's sampling frame, so the
 # index covers the area the model describes. Naive fits (no sampling frame)
-# keep the full grid, which is the base frame from R/data-prep.R. Trimmed by
+# keep the full grid, which is the base frame from R/01-data-prep.R. Trimmed by
 # cell only, so a year-restricted frame (e.g. 2013+) keeps every year.
 index_grid <- function(fit, grid) {
   frame <- fit$preferential$spec$data

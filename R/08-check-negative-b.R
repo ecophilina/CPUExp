@@ -16,7 +16,7 @@
 # preference term itself; the constant-b fit's surface is used as a check.
 # Predictions are plug-in (no bias correction).
 #
-# Usage (from the project root): Rscript R/check-negative-b.R
+# Usage (from the project root): Rscript R/08-check-negative-b.R
 
 library(dplyr)
 library(ggplot2)
@@ -28,7 +28,7 @@ mesh_cutoff <- 15
 n_depth_bands <- 5
 n_mu_bins <- 10
 
-prepped <- read_prepped() # from R/data-prep.R
+prepped <- read_prepped() # from R/01-data-prep.R
 frame <- prepped$frame
 cell_km <- prepped$settings$cell_km
 
@@ -167,7 +167,7 @@ write.csv(glm_slopes, file.path(pred_dir, "negative-b-glm-slopes.csv"),
 # 4. Field-level test -------------------------------------------------------------
 
 # Depth's share of b cancels against the sampling model's depth terms
-# (R/depth-effects.R), so b must be estimated from the catch model's random
+# (R/08-depth-effects.R), so b must be estimated from the catch model's random
 # fields. Field contribution = full minus fixed-effects-only log expected
 # catch, split into a cell mean over years (spatial) and the deviation from it
 # by year (spatiotemporal). Every frame cell was fished in >= min_yrs_cell

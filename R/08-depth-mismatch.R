@@ -2,7 +2,7 @@
 #
 # The joint fits with b on expected catch put the catch depth peak (~280 m)
 # deeper than the sampling depth peak (~190 m). Cell depth in the frame is the
-# mean log depth of the tows in the cell (R/data-prep.R), while the catch model
+# mean log depth of the tows in the cell (R/01-data-prep.R), while the catch model
 # uses each tow's depth, so part of the mismatch could come from aggregating to
 # cells. Compares, over the core footprint frame (cells >= 80% inside the 2012
 # trawl footprint):
@@ -13,7 +13,7 @@
 # Raw catch rates only (no month, vessel or year adjustment).
 #
 # Usage (from the project root):
-#   CPUE_SPECIES="pacific ocean perch" Rscript R/depth-mismatch.R
+#   CPUE_SPECIES="pacific ocean perch" Rscript R/08-depth-mismatch.R
 
 library(dplyr)
 library(ggplot2)

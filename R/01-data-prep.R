@@ -2,7 +2,7 @@
 #
 # Builds the catch data (one row per tow), runs exploratory plots, builds the
 # preferential-sampling frame and the index grid, and saves them to
-# <species>/data/cpue-index-clean.rds for R/cpue-index.R and later scripts.
+# <species>/data/cpue-index-clean.rds for R/02-cpue-index.R and later scripts.
 #
 # DRAFT where (cell size, fleet definition, depth trimming, ports, regions) are
 # placeholders to be checked against the data and the assessment's needs.

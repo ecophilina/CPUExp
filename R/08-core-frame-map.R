@@ -1,10 +1,10 @@
 # Map of the core footprint prediction frame used for the core indices
-# (index_grids$fp80 in R/ar1-indices.R): frame cells at least 80% inside the
+# (index_grids$fp80 in R/06-ar1-indices.R): frame cells at least 80% inside the
 # official 2012 trawl footprint, from the current prepped data. Shows cells
 # left out of the core (< 80% inside) and the footprint outline.
 #
 # Usage (from the project root):
-#   CPUE_SPECIES="pacific ocean perch" Rscript R/core-frame-map.R
+#   CPUE_SPECIES="pacific ocean perch" Rscript R/08-core-frame-map.R
 
 library(dplyr)
 library(ggplot2)

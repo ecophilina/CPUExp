@@ -14,7 +14,7 @@
 #      in the assessment cannot absorb).
 #
 # Data prep, exploratory plots, the sampling frame, and the index grid are in
-# R/data-prep.R, which saves <species>/data/cpue-index-clean.rds. Run that
+# R/01-data-prep.R, which saves <species>/data/cpue-index-clean.rds. Run that
 # first. The species is set in R/species.R (CPUE_SPECIES environment variable).
 #
 # Requires sdmTMB from the dev-preferential branch (RTMB backend).
@@ -35,7 +35,7 @@ refit <- FALSE # set TRUE to ignore cached fits
 
 # Data -------------------------------------------------------------------------
 
-prepped <- read_prepped() # from R/data-prep.R
+prepped <- read_prepped() # from R/01-data-prep.R
 d <- prepped$d # catch data: one row per tow
 frame <- prepped$frame # sampling frame: one row per eligible cell x year
 grid <- prepped$grid # index grid: frame cells, reference month, unit effort
@@ -150,7 +150,7 @@ fit_cpue <- function(preferential = NULL, fit_mesh = mesh,
 catch_formula_tv <- catch_kg ~ 1 + s(log_depth, k = 5) +
   month + (1 | vessel)
 # ... plus a target-vessel catchability effect (vessels landing a substantial
-# share of the species; R/data-prep.R)
+# share of the species; R/01-data-prep.R)
 catch_formula_tv_target <- catch_kg ~ 1 + s(log_depth, k = 5) +
   month + target_vessel + (1 | vessel)
 
@@ -196,7 +196,7 @@ fit_cpue_tv <- function(preferential = NULL, fit_mesh = mesh,
 # The sampling-model parameters are left at sdmTMB's defaults.
 
 # Name of the naive fit matching a family and catch model, as written by
-# R/family-comparison.R (e.g., "naive_tv-delta_gengamma")
+# R/03-family-comparison.R (e.g., "naive_tv-delta_gengamma")
 naive_fit_name <- function(family, tv = FALSE) {
   fam <- switch(family$family[2], Gamma = "gamma", lognormal = "lognormal",
     gengamma = "gengamma",
@@ -212,7 +212,7 @@ naive_fit_name <- function(family, tv = FALSE) {
 naive_start <- function(family, tv = FALSE, cutoff = mesh_cutoff) {
   f <- fit_file(naive_fit_name(family, tv), cutoff)
   if (!file.exists(f)) {
-    stop(f, " not found: fit it first with R/family-comparison.R ",
+    stop(f, " not found: fit it first with R/03-family-comparison.R ",
       if (tv) "tv " else "year ", sub("^naive(_tv)?-", "", naive_fit_name(family, tv)))
   }
   naive <- readRDS(f)
@@ -303,17 +303,17 @@ samp_formula3 <- sampled ~ 1 + footprint + pre_footprint + log_dist_port + poly(
 samp_formula4 <- sampled ~ 1 + footprint*pre_footprint + log_dist_port + poly(log_depth, 2)
 
 # Official 2012 footprint polygon: footprint_area = share of the cell inside
-# it (R/data-prep.R). Unlike the data-driven footprint, cells outside it were
+# it (R/01-data-prep.R). Unlike the data-driven footprint, cells outside it were
 # still fished from footprint_year on, so the interaction has no separation.
 samp_formula5 <- sampled ~ 1 + footprint_area*pre_footprint + log_dist_port + poly(log_depth, 2)
 # ... main effects only (the interaction was small and not always significant
 # for redbanded)
 samp_formula6 <- sampled ~ 1 + footprint_area + pre_footprint + log_dist_port + poly(log_depth, 2)
-# Response = cell-year fished by a target vessel (sampled_target, R/data-prep.R),
+# Response = cell-year fished by a target vessel (sampled_target, R/01-data-prep.R),
 # so b describes where the vessels focused on the species choose to fish
 samp_formula2_target <- sampled_target ~ 1 + log_dist_port + poly(log_depth, 2)
 # ... with a cubic in depth: the fleet fishes shallower than the catch depth
-# peak, and a quadratic may leave that to b x catch depth (R/depth-effects.R)
+# peak, and a quadratic may leave that to b x catch depth (R/08-depth-effects.R)
 samp_formula3_target <- sampled_target ~ 1 + log_dist_port + poly(log_depth, 3)
 
 # Sensitivity: allow the regional distribution of effort to shift by year
@@ -322,7 +322,7 @@ samp_formula3_target <- sampled_target ~ 1 + log_dist_port + poly(log_depth, 3)
 samp_formula_region <- update(samp_formula, . ~ . + factor(year):region)
 
 # Constant regional differences in effort, for a baseline ("iid"/"rw") model.
-# Tests whether b stands in for between-region effort (R/check-negative-b.R).
+# Tests whether b stands in for between-region effort (R/08-check-negative-b.R).
 samp_formula2_region <- update(samp_formula2, . ~ . + region)
 
 
@@ -370,7 +370,7 @@ pref <- function(coefficient = "constant", spatial = "on",
 # Joint models (target = "expected", pref()'s default) with the sampling field.
 # Each zero_* model is the null for the matching constant_* model (same family,
 # frame, formula, and field) for a likelihood-ratio test of b. Fit these in
-# parallel with R/run-joint-fits.sh (via R/fit-joint.R); this script then loads
+# parallel with R/04-run-joint-fits.sh (via R/04-fit-joint.R); this script then loads
 # the cached fits.
 # Target-vessel specs need sampled_target, which older prepped data lacks
 # (CPUE_DATA, R/species.R); there they are NULL so other models still build

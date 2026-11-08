@@ -1,23 +1,23 @@
-# Fit one model from `model_specs` in R/cpue-index.R and cache it.
+# Fit one model from `model_specs` in R/02-cpue-index.R and cache it.
 #
 # Usage (from the project root):
-#   Rscript R/fit-joint.R <model name> [--single-phase] [--start-naive] [--out=<file>]
-# e.g. Rscript R/fit-joint.R constant_xi_expected_dgamma
+#   Rscript R/04-fit-joint.R <model name> [--single-phase] [--start-naive] [--out=<file>]
+# e.g. Rscript R/04-fit-joint.R constant_xi_expected_dgamma
 #
-# Lets several models run as separate processes (see R/run-joint-fits.sh);
-# R/cpue-index.R then loads the cached fits. Uses the same data, mesh,
+# Lets several models run as separate processes (see R/04-run-joint-fits.sh);
+# R/02-cpue-index.R then loads the cached fits. Uses the same data, mesh,
 # fit_cpue(), and cache file (fit_file()) as the main script.
 
 args <- commandArgs(trailingOnly = TRUE)
 nm <- args[1]
 if (is.na(nm)) {
-  stop("Usage: Rscript R/fit-joint.R <model name> [--single-phase] [--start-naive] [--out=<file>]")
+  stop("Usage: Rscript R/04-fit-joint.R <model name> [--single-phase] [--start-naive] [--out=<file>]")
 }
 # --single-phase: fit_cpue(multiphase = FALSE). Does not lower peak memory for
 # time-varying-b models (~17.8 GB single-phase vs ~16 GB multiphase).
 multiphase <- !"--single-phase" %in% args
 # --start-naive: start the catch part from the matching naive fit (see
-# naive_start() in R/cpue-index.R). Implies single phase: sdmTMB applies
+# naive_start() in R/02-cpue-index.R). Implies single phase: sdmTMB applies
 # starting values after the first phase, which would otherwise be wasted.
 start_naive <- "--start-naive" %in% args
 if (start_naive) multiphase <- FALSE
@@ -25,10 +25,10 @@ if (start_naive) multiphase <- FALSE
 # refit without overwriting the cached fit)
 out_arg <- grep("^--out=", args, value = TRUE)
 
-# Evaluate R/cpue-index.R up to and including `model_families`, skipping the
+# Evaluate R/02-cpue-index.R up to and including `model_families`, skipping the
 # mesh sensitivity block: loads the clean data, builds the main mesh, and
 # defines the formulas, fit_cpue(), fit_file(), pref(), and the model lists.
-ex <- parse("R/cpue-index.R", keep.source = FALSE)
+ex <- parse("R/02-cpue-index.R", keep.source = FALSE)
 is_assign_to <- function(e, name) {
   is.call(e) && as.character(e[[1]]) %in% c("<-", "=") &&
     identical(e[[2]], as.name(name))

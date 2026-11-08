@@ -7,7 +7,7 @@
 # catch model's depth smoother. So depth reaches the sampling model by two
 # routes, its own poly(log_depth, 2) terms and b x the catch depth effect, and
 # the two can trade off. This script plots both routes to see whether the
-# negative b is a depth artefact (R/check-negative-b.R motivates this).
+# negative b is a depth artefact (R/08-check-negative-b.R motivates this).
 #
 # What: five views of depth for each fit, one per model component:
 #   1. Catch model, encounter: the s(log_depth) smoother on the logit scale.
@@ -29,8 +29,8 @@
 # shift curves up or down without changing their shape). Point estimates only.
 #
 # Usage (from the project root):
-#   CPUE_SPECIES="pacific ocean perch" Rscript R/depth-effects.R
-#   CPUE_SPECIES="pacific ocean perch" Rscript R/depth-effects.R <fit name> ...
+#   CPUE_SPECIES="pacific ocean perch" Rscript R/08-depth-effects.R
+#   CPUE_SPECIES="pacific ocean perch" Rscript R/08-depth-effects.R <fit name> ...
 # (named fits only; figure and CSV get a suffix)
 # Writes <species>/figs/depth-effects-<cell_km>km.png and
 # <species>/output/diagnostics/depth-effects.csv
@@ -48,7 +48,7 @@ mesh_cutoff <- 15
 # The frame (one row per eligible cell x year) sets the plotting range. Each
 # joint fit's own frame (stored with the fit) sets its centring and polynomial
 # basis, as frames differ between fits.
-prepped <- read_prepped() # from R/data-prep.R
+prepped <- read_prepped() # from R/01-data-prep.R
 frame <- prepped$frame
 cell_km <- prepped$settings$cell_km
 
@@ -77,11 +77,19 @@ fit_sets <- list(
     "constant b, core, IID", "constant_iidbase_fp80frame_xi_expected_tv_dgengamma",
     "constant b, core, AR(1)", "constant_iidbase_fp80frame_xi_expected_tv_ar1_dgengamma",
     "constant b, core, AR(1), target vessels", "constant_iidbase_fp80frame_target_xi_expected_tv_ar1_dgengamma"
+  ),
+  # Bocaccio: naive AR(1) fits without target_vessel, by fleet definition
+  # (vessels with >= 5 positive trips in >= 1, 3 or 5 years)
+  "bocaccio" = tribble(
+    ~label, ~fit,
+    "naive, AR(1), min 1 yr fleet", "naive_tv_ar1_current-delta_gengamma",
+    "naive, AR(1), min 3 yr fleet", "naive_tv_ar1_min3yr-delta_gengamma",
+    "naive, AR(1), min 5 yr fleet", "naive_tv_ar1_min5yr-delta_gengamma"
   )
 )
 fits <- fit_sets[[species]]
 if (is.null(fits)) stop("No depth-effect fits listed for ", species)
-# Optionally only some of them: Rscript R/depth-effects.R <fit name> ...
+# Optionally only some of them: Rscript R/08-depth-effects.R <fit name> ...
 args <- commandArgs(trailingOnly = TRUE)
 if (length(args)) {
   stopifnot(all(args %in% fits$fit))
